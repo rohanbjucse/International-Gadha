@@ -1,59 +1,97 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+// Multi-server STUN configuration for universal NAT traversal across cellular/WiFi
 const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com:3478' }
+  ],
+  iceCandidatePoolSize: 8
 };
 
 export function useWebRTC({ socket, roomCode, enabled }) {
   const [localStream, setLocalStream] = useState(null);
   const [peerStreams, setPeerStreams] = useState({}); // socketId -> MediaStream
+  const [peerMuteStates, setPeerMuteStates] = useState({}); // socketId -> { micOn, camOn }
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [permissionError, setPermissionError] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const localStreamRef = useRef(null);
   const pcsRef = useRef({}); // socketId -> RTCPeerConnection
+  const makingOfferRef = useRef({}); // socketId -> boolean
   const iceCandidatesQueueRef = useRef({}); // socketId -> [RTCIceCandidate]
 
-  // Start capturing local mic & cam
+  // Start capturing local mic & cam with cascading fallback
   const startMedia = useCallback(async () => {
+    setIsInitializing(true);
+    setPermissionError(null);
+
+    // Stop existing stream if any
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setPermissionError('WebRTC not supported on this device/browser.');
+        setPermissionError('Camera/Mic not supported by this browser.');
+        setIsInitializing(false);
         return null;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
-        audio: true
-      });
+      let stream = null;
+
+      // Strategy 1: Ideal mobile-friendly resolution (prevents overheating & works fast)
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 320, max: 640 },
+            height: { ideal: 240, max: 480 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true
+          }
+        });
+      } catch (err1) {
+        // Strategy 2: Generic video + audio without specific constraints
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch (err2) {
+          // Strategy 3: Audio only fallback (if camera is in use or blocked)
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            setCamOn(false);
+          } catch (err3) {
+            console.warn('Media capture error:', err3);
+            setPermissionError('Camera and mic permission denied. Please allow access in browser settings.');
+            setIsInitializing(false);
+            return null;
+          }
+        }
+      }
+
       localStreamRef.current = stream;
       setLocalStream(stream);
-      setCamOn(true);
       setMicOn(true);
       setPermissionError(null);
+      setIsInitializing(false);
       return stream;
-    } catch {
-      // If video+audio failed, try audio only
-      try {
-        const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        localStreamRef.current = audioOnly;
-        setLocalStream(audioOnly);
-        setCamOn(false);
-        setMicOn(true);
-        setPermissionError(null);
-        return audioOnly;
-      } catch {
-        setPermissionError('Camera/microphone access denied.');
-        return null;
-      }
+    } catch (finalErr) {
+      console.warn('getUserMedia fatal:', finalErr);
+      setPermissionError('Unable to access media devices.');
+      setIsInitializing(false);
+      return null;
     }
   }, []);
 
-  // Create an RTCPeerConnection for a target peer
+  // Create an RTCPeerConnection for a target peer (W3C Perfect Negotiation)
   const getOrCreatePC = useCallback((targetSocketId, stream) => {
     if (pcsRef.current[targetSocketId]) {
       return pcsRef.current[targetSocketId];
@@ -61,6 +99,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
     pcsRef.current[targetSocketId] = pc;
+    makingOfferRef.current[targetSocketId] = false;
     iceCandidatesQueueRef.current[targetSocketId] = [];
 
     // Attach local tracks
@@ -97,6 +136,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         pc.close();
         delete pcsRef.current[targetSocketId];
+        delete makingOfferRef.current[targetSocketId];
         delete iceCandidatesQueueRef.current[targetSocketId];
         setPeerStreams((prev) => {
           const next = { ...prev };
@@ -114,26 +154,36 @@ export function useWebRTC({ socket, roomCode, enabled }) {
     const stream = localStreamRef.current;
     if (!stream) return;
     const audioTracks = stream.getAudioTracks();
+    const nextState = !micOn;
     audioTracks.forEach((track) => {
-      track.enabled = !track.enabled;
+      track.enabled = nextState;
     });
-    setMicOn(audioTracks[0]?.enabled ?? false);
-  }, []);
+    setMicOn(nextState);
+
+    if (socket && roomCode) {
+      socket.emit('webrtc_mute_state', { roomCode, micOn: nextState, camOn });
+    }
+  }, [micOn, camOn, socket, roomCode]);
 
   // Toggle Camera
   const toggleCam = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
     const videoTracks = stream.getVideoTracks();
+    const nextState = !camOn;
     videoTracks.forEach((track) => {
-      track.enabled = !track.enabled;
+      track.enabled = nextState;
     });
-    setCamOn(videoTracks[0]?.enabled ?? false);
-  }, []);
+    setCamOn(nextState);
+
+    if (socket && roomCode) {
+      socket.emit('webrtc_mute_state', { roomCode, micOn, camOn: nextState });
+    }
+  }, [micOn, camOn, socket, roomCode]);
 
   useEffect(() => {
     if (!socket || !roomCode || !enabled) {
-      // Clean up if disabled
+      // Clean up when disabled
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
@@ -143,8 +193,10 @@ export function useWebRTC({ socket, roomCode, enabled }) {
         try { pc.close(); } catch {}
       });
       pcsRef.current = {};
+      makingOfferRef.current = {};
       iceCandidatesQueueRef.current = {};
       setPeerStreams({});
+      setPeerMuteStates({});
       return;
     }
 
@@ -160,26 +212,42 @@ export function useWebRTC({ socket, roomCode, enabled }) {
 
     init();
 
-    // 1. Peer joined -> Initiate Offer
+    // 1. Peer joined -> Initiate Offer using polite pattern
     const handlePeerJoined = async ({ socketId }) => {
       if (socketId === socket.id) return;
       try {
         const pc = getOrCreatePC(socketId, localStreamRef.current);
+        makingOfferRef.current[socketId] = true;
         const offer = await pc.createOffer();
+        if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);
         socket.emit('webrtc_offer', { toSocketId: socketId, offer });
       } catch (err) {
         console.warn('Failed to create offer:', err);
+      } finally {
+        makingOfferRef.current[socketId] = false;
       }
     };
 
-    // 2. Received Offer -> Set Remote & Send Answer
+    // 2. Received Offer -> Perfect Negotiation Glare Resolution
     const handleOffer = async ({ fromSocketId, offer }) => {
       try {
         const pc = getOrCreatePC(fromSocketId, localStreamRef.current);
+        const polite = socket.id < fromSocketId;
+        const offerCollision = makingOfferRef.current[fromSocketId] || pc.signalingState !== 'stable';
+
+        // Glare resolution: if not polite and collision, ignore the colliding offer
+        if (!polite && offerCollision) {
+          return;
+        }
+
+        if (offerCollision) {
+          await pc.setLocalDescription({ type: 'rollback' });
+        }
+
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
-        // Flush queued ICE candidates
+        // Flush queued candidates
         const queued = iceCandidatesQueueRef.current[fromSocketId] || [];
         for (const candidate of queued) {
           try {
@@ -200,7 +268,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
     const handleAnswer = async ({ fromSocketId, answer }) => {
       try {
         const pc = pcsRef.current[fromSocketId];
-        if (pc) {
+        if (pc && pc.signalingState === 'have-local-offer') {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
 
           // Flush queued candidates
@@ -224,14 +292,14 @@ export function useWebRTC({ socket, roomCode, enabled }) {
         if (pc && pc.remoteDescription && pc.remoteDescription.type) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } else {
-          // Queue candidate until remote description is set
+          // Queue candidate until remote description is established
           if (!iceCandidatesQueueRef.current[fromSocketId]) {
             iceCandidatesQueueRef.current[fromSocketId] = [];
           }
           iceCandidatesQueueRef.current[fromSocketId].push(candidate);
         }
       } catch (err) {
-        console.warn('Failed to add ICE candidate:', err);
+        console.warn('Failed to add candidate:', err);
       }
     };
 
@@ -241,6 +309,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
       if (pc) {
         try { pc.close(); } catch {}
         delete pcsRef.current[socketId];
+        delete makingOfferRef.current[socketId];
         delete iceCandidatesQueueRef.current[socketId];
       }
       setPeerStreams((prev) => {
@@ -248,6 +317,19 @@ export function useWebRTC({ socket, roomCode, enabled }) {
         delete next[socketId];
         return next;
       });
+      setPeerMuteStates((prev) => {
+        const next = { ...prev };
+        delete next[socketId];
+        return next;
+      });
+    };
+
+    // 6. Peer mute state changed
+    const handlePeerMuteState = ({ socketId, micOn: pMic, camOn: pCam }) => {
+      setPeerMuteStates((prev) => ({
+        ...prev,
+        [socketId]: { micOn: pMic, camOn: pCam }
+      }));
     };
 
     socket.on('webrtc_peer_joined', handlePeerJoined);
@@ -255,6 +337,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
     socket.on('webrtc_answer', handleAnswer);
     socket.on('webrtc_ice_candidate', handleCandidate);
     socket.on('webrtc_peer_left', handlePeerLeft);
+    socket.on('webrtc_peer_mute_state', handlePeerMuteState);
 
     return () => {
       isMounted = false;
@@ -263,6 +346,7 @@ export function useWebRTC({ socket, roomCode, enabled }) {
       socket.off('webrtc_answer', handleAnswer);
       socket.off('webrtc_ice_candidate', handleCandidate);
       socket.off('webrtc_peer_left', handlePeerLeft);
+      socket.off('webrtc_peer_mute_state', handlePeerMuteState);
 
       if (socket) {
         socket.emit('webrtc_leave', { roomCode });
@@ -278,18 +362,22 @@ export function useWebRTC({ socket, roomCode, enabled }) {
         try { pc.close(); } catch {}
       });
       pcsRef.current = {};
+      makingOfferRef.current = {};
       iceCandidatesQueueRef.current = {};
       setPeerStreams({});
+      setPeerMuteStates({});
     };
   }, [socket, roomCode, enabled, startMedia, getOrCreatePC]);
 
   return {
     localStream,
     peerStreams,
+    peerMuteStates,
     micOn,
     camOn,
     toggleMic,
     toggleCam,
-    permissionError
+    permissionError,
+    isInitializing
   };
 }

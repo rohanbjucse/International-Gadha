@@ -9,6 +9,7 @@ import { JokerModal } from './components/JokerModal';
 import { GameOverModal } from './components/GameOverModal';
 import { RulesModal } from './components/RulesModal';
 import { EatenCardsModal } from './components/EatenCardsModal';
+import { ChatModal } from './components/ChatModal';
 import { VideoTile } from './components/VideoTile';
 import { useWebRTC } from './hooks/useWebRTC';
 import { sounds } from './utils/sound';
@@ -22,7 +23,9 @@ import {
   Mic,
   MicOff,
   Video,
-  VideoOff
+  VideoOff,
+  MessageSquare,
+  Square
 } from 'lucide-react';
 
 // Connect to backend server (supports production domains, direct port 3001, and Vite dev port 5173)
@@ -41,6 +44,10 @@ export default function App() {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isJokerModalOpen, setIsJokerModalOpen] = useState(false);
   const [isEatenModalOpen, setIsEatenModalOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [latestChatToast, setLatestChatToast] = useState(null);
   const [pendingJokerCard, setPendingJokerCard] = useState(null);
   const [isMuted, setIsMuted] = useState(sounds.isMuted());
   const [statusNotification, setStatusNotification] = useState('');
@@ -48,20 +55,22 @@ export default function App() {
 
   const lastActionTimestampRef = useRef(null);
 
-  // WebRTC video/audio chat
-  const isInGame = !!(gameState && gameState.status !== 'waiting');
+  // WebRTC video/audio chat (available during lobby or gameplay)
+  const isInRoom = !!gameState;
   const {
     localStream,
     peerStreams,
+    peerMuteStates,
     micOn,
     camOn,
     toggleMic,
     toggleCam,
-    permissionError
+    permissionError,
+    isInitializing
   } = useWebRTC({
     socket,
     roomCode,
-    enabled: videoEnabled && isInGame
+    enabled: videoEnabled && isInRoom
   });
 
   // Initialize Socket.IO connection
@@ -122,6 +131,25 @@ export default function App() {
           sounds.playCardSnap();
         }
       }
+    });
+
+    s.on('chat_received', (chatMsg) => {
+      setChatMessages((prev) => [...prev.slice(-49), chatMsg]);
+      setIsChatOpen((open) => {
+        if (!open) {
+          setUnreadChatCount((c) => c + 1);
+          setLatestChatToast(chatMsg);
+          setTimeout(() => {
+            setLatestChatToast((cur) => (cur === chatMsg ? null : cur));
+          }, 3500);
+        }
+        return open;
+      });
+    });
+
+    s.on('notification', ({ message }) => {
+      setStatusNotification(message);
+      setTimeout(() => setStatusNotification(''), 4000);
     });
 
     setSocket(s);
@@ -285,6 +313,22 @@ export default function App() {
     }
   }
 
+  // Host: End Game
+  function handleEndGame() {
+    if (!socket || !roomCode) return;
+    if (window.confirm('Are you sure you want to end this game now? Current scores will decide the International Gadha!')) {
+      socket.emit('end_game', { roomCode }, (res) => {
+        if (res && res.error) alert(res.error);
+      });
+    }
+  }
+
+  // Send in-game chat message or reaction
+  function handleSendMessage({ message, reaction }) {
+    if (!socket || !roomCode) return;
+    socket.emit('send_chat', { roomCode, message, reaction });
+  }
+
   function toggleSound() {
     const muted = sounds.toggleMute();
     setIsMuted(muted);
@@ -313,7 +357,9 @@ export default function App() {
         <div className="nav-left">
           <div className="brand-logo" onClick={() => !gameState && clearLocalSession()}>
             <span className="brand-icon">🫏</span>
-            <span className="brand-title">INTERNATIONAL GADHA</span>
+            <span className="brand-title">
+              <span className="brand-title-full">INTERNATIONAL </span>GADHA
+            </span>
           </div>
 
           {gameState && (
@@ -330,40 +376,48 @@ export default function App() {
             className={`nav-status-pill ${connected ? 'status-online' : 'status-offline'}`}
             title={connected ? 'Connected to Game Server' : 'Connecting to Server...'}
           >
-            {connected ? <Wifi size={14} /> : <WifiOff size={14} />}
+            {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
             <span className="hidden-mobile">{connected ? 'Online' : 'Offline'}</span>
           </span>
 
-          {/* Video Chat Toggle (only during gameplay) */}
-          {isInGame && (
-            <>
-              <button
-                onClick={() => setVideoEnabled(v => !v)}
-                className={`nav-btn-icon ${videoEnabled ? 'nav-btn-active' : ''}`}
-                title={videoEnabled ? 'Disable Video Chat' : 'Enable Video Chat'}
-              >
-                {videoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
-              </button>
+          {/* Video Chat Toggle (during room) */}
+          {isInRoom && (
+            <button
+              onClick={() => setVideoEnabled(v => !v)}
+              className={`nav-btn-icon ${videoEnabled ? 'nav-btn-active' : ''}`}
+              title={videoEnabled ? 'Disable Video Chat' : 'Enable Video Chat'}
+            >
+              {videoEnabled ? <Video size={16} /> : <VideoOff size={16} />}
+            </button>
+          )}
 
-              {videoEnabled && (
-                <>
-                  <button
-                    onClick={toggleMic}
-                    className={`nav-btn-icon ${!micOn ? 'nav-btn-danger' : ''}`}
-                    title={micOn ? 'Mute Mic' : 'Unmute Mic'}
-                  >
-                    {micOn ? <Mic size={18} /> : <MicOff size={18} />}
-                  </button>
-                  <button
-                    onClick={toggleCam}
-                    className={`nav-btn-icon ${!camOn ? 'nav-btn-danger' : ''}`}
-                    title={camOn ? 'Turn Off Camera' : 'Turn On Camera'}
-                  >
-                    {camOn ? <Video size={16} /> : <VideoOff size={16} />}
-                  </button>
-                </>
+          {/* Table Chat Toggle */}
+          {gameState && (
+            <button
+              onClick={() => {
+                setIsChatOpen(v => !v);
+                setUnreadChatCount(0);
+              }}
+              className="nav-btn-icon nav-btn-chat"
+              title="Open Chat"
+            >
+              <MessageSquare size={16} />
+              {unreadChatCount > 0 && (
+                <span className="chat-unread-badge">{unreadChatCount}</span>
               )}
-            </>
+            </button>
+          )}
+
+          {/* Host End Game Button (During active game) */}
+          {isHost && gameState?.status === 'playing' && (
+            <button
+              onClick={handleEndGame}
+              className="nav-btn-end"
+              title="Host: End Game Now"
+            >
+              <Square size={12} fill="currentColor" />
+              <span>End</span>
+            </button>
           )}
 
           {/* Sound Toggle */}
@@ -372,27 +426,27 @@ export default function App() {
             className="nav-btn-icon"
             title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
           >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
 
           {/* Rules Modal */}
           <button
             onClick={() => setIsRulesOpen(true)}
-            className="nav-btn-icon"
+            className="nav-btn-icon hidden-xs"
             title="How to Play Rules"
           >
-            <BookOpen size={18} />
+            <BookOpen size={16} />
           </button>
 
-          {/* Exit / Leave Game */}
+          {/* Exit / Leave Game (ALWAYS visible!) */}
           {gameState && (
             <button
               onClick={handleLeaveGame}
               className="nav-btn-leave"
               title="Leave Room"
             >
-              <LogOut size={16} />
-              <span className="hidden-mobile">Leave</span>
+              <LogOut size={14} />
+              <span className="leave-text">Leave</span>
             </button>
           )}
         </div>
@@ -436,6 +490,7 @@ export default function App() {
               localPlayer={me}
               localStream={localStream}
               peerStreams={peerStreams}
+              peerMuteStates={peerMuteStates}
               micOn={micOn}
               camOn={camOn}
               onToggleMic={toggleMic}
@@ -462,6 +517,35 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Floating Incoming Chat Toast (When chat drawer is closed) */}
+      {latestChatToast && !isChatOpen && (
+        <div
+          className="chat-floating-toast"
+          onClick={() => {
+            setIsChatOpen(true);
+            setUnreadChatCount(0);
+            setLatestChatToast(null);
+          }}
+          title="Click to open chat"
+        >
+          <span className="toast-chat-icon">💬</span>
+          <span className="toast-sender">{latestChatToast.senderName}:</span>
+          <span className="toast-msg">{latestChatToast.message}</span>
+        </div>
+      )}
+
+      {/* Table Chat Drawer / Modal */}
+      <ChatModal
+        isOpen={isChatOpen}
+        onClose={() => {
+          setIsChatOpen(false);
+          setUnreadChatCount(0);
+        }}
+        messages={chatMessages}
+        onSendMessage={handleSendMessage}
+        myPlayerId={myPlayerId}
+      />
 
       {/* Joker Rank Selector Modal */}
       <JokerModal

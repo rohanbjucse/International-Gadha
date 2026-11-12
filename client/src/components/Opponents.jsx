@@ -14,6 +14,7 @@ function VideoFeed({ stream, isLocal = false, avatar = '😎', camOff = false })
           ref={(el) => {
             if (el && el.srcObject !== stream) {
               el.srcObject = stream;
+              el.play?.().catch(() => {});
             }
           }}
           className={`seat-video-element ${isLocal ? 'seat-video-mirror' : ''}`}
@@ -32,6 +33,7 @@ export function Opponents({
   localPlayer = null,
   localStream = null,
   peerStreams = {},
+  peerMuteStates = {},
   micOn = true,
   camOn = true,
   onToggleMic,
@@ -59,6 +61,11 @@ export function Opponents({
                 camOff={!camOn}
               />
               <span className="badge-you-tag">YOU</span>
+              {!micOn && (
+                <span className="badge-seat-muted" title="Microphone Muted">
+                  <MicOff size={10} />
+                </span>
+              )}
             </div>
 
             <div className="opponent-info">
@@ -105,6 +112,9 @@ export function Opponents({
       {opponents.map((player) => {
         const isCurrentTurn = currentTurnPlayerId === player.id;
         const peerStream = player.socketId ? peerStreams[player.socketId] : null;
+        const peerMute = player.socketId ? peerMuteStates[player.socketId] : null;
+        const isPeerCamOff = peerMute?.camOn === false;
+        const isPeerMicOff = peerMute?.micOn === false;
 
         return (
           <div
@@ -124,10 +134,16 @@ export function Opponents({
                     stream={peerStream}
                     isLocal={false}
                     avatar={player.avatar || '😎'}
-                    camOff={false}
+                    camOff={isPeerCamOff}
                   />
                 ) : (
                   <span className="opponent-avatar">{player.avatar || '😎'}</span>
+                )}
+
+                {isPeerMicOff && (
+                  <span className="badge-seat-muted" title="Player Muted">
+                    <MicOff size={10} />
+                  </span>
                 )}
 
                 {player.isHost && (

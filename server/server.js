@@ -676,7 +676,33 @@ io.on('connection', (socket) => {
     socket.to(rc).emit('webrtc_peer_left', { socketId: socket.id });
   });
 
-  // 12. Disconnect handling (Keep session persistent!)
+  socket.on('webrtc_mute_state', ({ roomCode: rc, micOn, camOn }) => {
+    socket.to(rc).emit('webrtc_peer_mute_state', { socketId: socket.id, micOn, camOn });
+  });
+
+  // 12. Host manually ends game
+  socket.on('end_game', ({ roomCode }, callback) => {
+    const room = rooms.get(roomCode);
+    if (!room) return callback && callback({ error: 'Room not found' });
+
+    const caller = room.players.find(p => p.socketId === socket.id);
+    if (!caller || !caller.isHost) {
+      return callback && callback({ error: 'Only the room host can end the game' });
+    }
+
+    if (room.status === 'playing') {
+      finishGame(room);
+      room.lastAction = {
+        type: 'game_ended_by_host',
+        message: `${caller.name} (Host) ended the game!`,
+        timestamp: Date.now()
+      };
+      broadcastRoomState(room);
+    }
+    if (callback) callback({ success: true });
+  });
+
+  // 13. Disconnect handling (Keep session persistent!)
   socket.on('disconnect', () => {
     if (boundRoomCode && boundPlayerId) {
       const room = rooms.get(boundRoomCode);

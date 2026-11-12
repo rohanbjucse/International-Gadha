@@ -313,18 +313,27 @@ function chooseBotMove(botHand, tableCards) {
 
   // 2. If NO card is safe, we MUST eat:
   // Strategy: Minimize Gadha (spade) points taken!
-  const eatingCards = analysis.map(a => {
-    const card = botHand.find(c => c.id === a.cardId);
-    return { card, analysis: a };
-  });
+  const eatingCards = analysis
+    .map(a => {
+      const card = botHand.find(c => c.id === a.cardId);
+      return card ? { card, analysis: a } : null;
+    })
+    .filter(Boolean);
+
+  if (eatingCards.length === 0) {
+    return {
+      card: botHand[0],
+      jokerRank: botHand[0].isJoker ? 1 : null
+    };
+  }
 
   // Sort by riskPoints ascending (least spade points eaten)
-  eatingCards.sort((a, b) => a.analysis.riskPoints - b.analysis.riskPoints);
+  eatingCards.sort((a, b) => (a.analysis?.riskPoints || 0) - (b.analysis?.riskPoints || 0));
   const bestChoice = eatingCards[0];
 
   return {
     card: bestChoice.card,
-    jokerRank: bestChoice.card.isJoker ? bestChoice.analysis.recommendedRank : null
+    jokerRank: bestChoice.card.isJoker ? (bestChoice.analysis?.recommendedRank || 1) : null
   };
 }
 

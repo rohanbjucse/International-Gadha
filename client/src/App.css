@@ -1211,14 +1211,14 @@
 
 .joker-tag {
   position: absolute;
-  top: -8px;
-  right: -6px;
+  top: 1px;
+  right: 1px;
   background: linear-gradient(135deg, #8b5cf6, #6d28d9);
   color: #ffffff;
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   font-weight: 900;
-  padding: 2px 5px;
-  border-radius: 6px;
+  padding: 1px 4px;
+  border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   z-index: 10;
 }
@@ -2272,16 +2272,42 @@
   }
 
   .joker-center-art .joker-emoji {
-    font-size: 1.15rem;
+    font-size: 0.9rem;
   }
 
   .joker-label {
-    font-size: 0.5rem;
+    font-size: 0.4rem;
   }
 
   .joker-tag {
-    font-size: 0.5rem;
-    padding: 1px 3px;
+    font-size: 0.42rem;
+    padding: 1px 2px;
+    top: 0;
+    right: 0;
+    border-radius: 3px;
+  }
+
+  .joker-sub-value {
+    font-size: 0.42rem;
+    line-height: 1;
+  }
+
+  .joker-center-art {
+    overflow: hidden;
+    max-height: 100%;
+    gap: 0;
+  }
+
+  .size-md .joker-center-art .joker-emoji {
+    font-size: 0.75rem;
+  }
+
+  .size-md .joker-label {
+    font-size: 0.35rem;
+  }
+
+  .size-md .joker-sub-value {
+    font-size: 0.38rem;
   }
 
   .rules-flow-grid {

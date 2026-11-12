@@ -100,6 +100,9 @@ export default function App() {
             setGameState(res.gameState);
             setMyPlayerId(res.playerId);
             setRoomCode(res.roomCode);
+            if (Array.isArray(res.gameState?.chatHistory)) {
+              setChatMessages(res.gameState.chatHistory);
+            }
           } else {
             // Room likely expired
             clearLocalSession();
@@ -114,6 +117,14 @@ export default function App() {
 
     s.on('game_state_update', (state) => {
       setGameState(state);
+
+      if (Array.isArray(state.chatHistory) && state.chatHistory.length > 0) {
+        setChatMessages((prev) => {
+          const prevKeys = new Set(prev.map(m => m.id || `${m.senderId}_${m.timestamp}`));
+          const newItems = state.chatHistory.filter(m => !prevKeys.has(m.id || `${m.senderId}_${m.timestamp}`));
+          return newItems.length > 0 ? [...prev, ...newItems] : prev;
+        });
+      }
 
       // Play sound effects based on actions
       if (state.lastAction && state.lastAction.timestamp !== lastActionTimestampRef.current) {
@@ -192,6 +203,9 @@ export default function App() {
       if (res && res.success) {
         saveSession(res.roomCode, res.playerId, res.sessionToken);
         setGameState(res.gameState);
+        if (Array.isArray(res.gameState?.chatHistory)) {
+          setChatMessages(res.gameState.chatHistory);
+        }
       } else if (res && res.error) {
         alert(res.error);
       }
@@ -205,6 +219,9 @@ export default function App() {
       if (res && res.success) {
         saveSession(res.roomCode, res.playerId, res.sessionToken);
         setGameState(res.gameState);
+        if (Array.isArray(res.gameState?.chatHistory)) {
+          setChatMessages(res.gameState.chatHistory);
+        }
       } else if (res && res.error) {
         alert(res.error);
       }

@@ -97,6 +97,7 @@ function getSanitizedGameState(room, requestingPlayerId) {
     turnIndex: room.turnIndex,
     lastAction: room.lastAction,
     history: room.history.slice(-15),
+    chatHistory: (room.chatHistory || []).slice(-60),
     gameResults: room.gameResults,
     createdAt: room.createdAt
   };
@@ -325,23 +326,46 @@ function finishGame(room) {
  * Check if the active turn belongs to a bot and trigger AI move
  */
 function checkAndTriggerBotTurn(room) {
+  if (!room || room.status !== 'playing') return;
   const currentPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
   if (!currentPlayer || !currentPlayer.isBot || currentPlayer.hand.length === 0) {
     return;
   }
 
-  // Realistic human-like delay for bot turn (1200ms - 1800ms)
-  setTimeout(() => {
-    // Verify room is still playing and it's still this bot's turn
-    if (room.status !== 'playing' || room.currentTurnPlayerId !== currentPlayer.id) {
-      return;
-    }
+  // Clear any existing timer to prevent race conditions
+  if (room.botTurnTimer) {
+    clearTimeout(room.botTurnTimer);
+    room.botTurnTimer = null;
+  }
 
-    const botMove = chooseBotMove(currentPlayer.hand, room.table);
-    if (botMove && botMove.card) {
-      playCard(room, currentPlayer.id, botMove.card.id, botMove.jokerRank);
+  const turnPlayerId = currentPlayer.id;
+  room.botTurnTimer = setTimeout(() => {
+    room.botTurnTimer = null;
+    try {
+      if (room.status !== 'playing' || room.currentTurnPlayerId !== turnPlayerId) {
+        return;
+      }
+
+      const bot = room.players.find(p => p.id === turnPlayerId);
+      if (!bot || !bot.isBot || bot.hand.length === 0) return;
+
+      let botMove = null;
+      try {
+        botMove = chooseBotMove(bot.hand, room.table);
+      } catch (err) {
+        console.error('Bot AI error in chooseBotMove:', err);
+      }
+
+      if (botMove && botMove.card) {
+        playCard(room, bot.id, botMove.card.id, botMove.jokerRank);
+      } else if (bot.hand.length > 0) {
+        // Fallback safety move so game never gets stuck
+        playCard(room, bot.id, bot.hand[0].id, bot.hand[0].isJoker ? 1 : null);
+      }
+    } catch (e) {
+      console.error('Error executing bot move:', e);
     }
-  }, 1400);
+  }, 1100);
 }
 
 // ---------------- Socket.IO Event Handlers ----------------
@@ -378,6 +402,7 @@ io.on('connection', (socket) => {
       currentTurnPlayerId: null,
       turnIndex: 0,
       history: [],
+      chatHistory: [],
       lastAction: null,
       gameResults: null
     };
@@ -640,13 +665,24 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) return;
 
-    io.to(roomCode).emit('chat_received', {
+    const chatItem = {
+      id: generateId('chat'),
       senderId: player.id,
       senderName: player.name,
       message: message ? message.substring(0, 100) : '',
-      reaction,
+      reaction: reaction || null,
       timestamp: Date.now()
-    });
+    };
+
+    if (!room.chatHistory) {
+      room.chatHistory = [];
+    }
+    room.chatHistory.push(chatItem);
+    if (room.chatHistory.length > 100) {
+      room.chatHistory.shift();
+    }
+
+    io.to(roomCode).emit('chat_received', chatItem);
   });
 
   // 11. WebRTC Signaling relay (peer-to-peer video/audio)

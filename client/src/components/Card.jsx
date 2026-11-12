@@ -27,6 +27,18 @@ export function Card({
   const isJoker = card.isJoker;
   const isRed = card.suit === 'H' || card.suit === 'D';
 
+  // Convert joker substitute rank number to display label
+  const getSubRankLabel = (rank) => {
+    if (!rank) return null;
+    const n = Number(rank);
+    if (n === 1) return 'A';
+    if (n === 11) return 'J';
+    if (n === 12) return 'Q';
+    if (n === 13) return 'K';
+    return String(n);
+  };
+  const subRankLabel = isJoker ? getSubRankLabel(card.jokerSubstituteRank) : null;
+
   return (
     <div
       onClick={isPlayable ? onClick : undefined}
@@ -55,8 +67,8 @@ export function Card({
           <div className="joker-center-art">
             <span className="joker-emoji">🃏</span>
             <span className="joker-label">JOKER</span>
-            {card.jokerSubstituteRank && (
-              <span className="joker-sub-value">as {card.jokerSubstituteRank}</span>
+            {subRankLabel && (
+              <span className="joker-sub-value">= {subRankLabel}</span>
             )}
           </div>
         ) : (

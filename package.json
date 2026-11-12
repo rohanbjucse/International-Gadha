@@ -1,0 +1,22 @@
+{
+  "name": "international-gadha",
+  "version": "1.0.0",
+  "description": "International Gadha - Realtime Web Card Game",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "build": "cd client && npm install && npm run build",
+    "dev:server": "node server/server.js",
+    "dev:client": "cd client && npm run dev",
+    "test": "node test_engine.js"
+  },
+  "keywords": ["card-game", "multiplayer", "socket-io", "international-gadha"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "socket.io": "^4.8.4"
+  }
+}

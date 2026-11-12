@@ -2183,6 +2183,183 @@
 }
 
 /* =========================================================
+   VIDEO CHAT STRIP & TILES
+   ========================================================= */
+
+/* Horizontal scrollable video strip above opponents */
+.video-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  background: rgba(4, 12, 10, 0.6);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.15);
+}
+
+.video-strip::-webkit-scrollbar { display: none; }
+
+/* Video tile base */
+.video-tile {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #0a1f17;
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.2s;
+}
+
+.video-tile-active {
+  border-color: #eab308;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+}
+
+.video-tile-local {
+  border-color: rgba(99, 206, 155, 0.5);
+}
+
+/* Sizes */
+.video-tile-xs {
+  width: 68px;
+  height: 54px;
+}
+
+.video-tile-sm {
+  width: 100px;
+  height: 76px;
+}
+
+.video-tile-md {
+  width: 140px;
+  height: 105px;
+}
+
+/* Video feed */
+.video-tile-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Avatar fallback */
+.video-tile-avatar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 50%, #0d4a38 0%, #04120d 100%);
+}
+
+.video-avatar-emoji {
+  font-size: 1.6rem;
+}
+
+.video-tile-xs .video-avatar-emoji {
+  font-size: 1.3rem;
+}
+
+/* Nameplate */
+.video-tile-nameplate {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.65);
+  gap: 2px;
+}
+
+.video-tile-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50px;
+}
+
+.video-tile-xs .video-tile-name {
+  font-size: 0.55rem;
+  max-width: 40px;
+}
+
+.video-tile-badges {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.badge-muted {
+  color: #ef4444;
+}
+
+.badge-cam-off {
+  color: #94a3b8;
+}
+
+/* Active turn pulse ring */
+.video-active-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  border: 2px solid #eab308;
+  animation: ring-pulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ring-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Permission error */
+.video-perm-error {
+  font-size: 0.65rem;
+  color: #f87171;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+}
+
+/* Navbar active/danger button states */
+.nav-btn-active {
+  background: rgba(234, 179, 8, 0.2) !important;
+  color: #eab308 !important;
+}
+
+.nav-btn-danger {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444 !important;
+}
+
+/* Mobile: video strip compact */
+@media (max-width: 640px) {
+  .video-strip {
+    padding: 0.2rem 0.35rem;
+    gap: 0.3rem;
+    max-height: 62px;
+  }
+
+  .video-tile-xs {
+    width: 58px;
+    height: 46px;
+  }
+
+  .video-tile-sm {
+    width: 80px;
+    height: 62px;
+  }
+}
+
+/* =========================================================
    EATEN CARDS MODAL & BANK STYLES
    ========================================================= */
 .eaten-cards-modal-box {

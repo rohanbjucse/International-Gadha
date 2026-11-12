@@ -72,6 +72,7 @@ function getSanitizedGameState(room, requestingPlayerId) {
       isBot: p.isBot,
       avatar: p.avatar,
       connected: p.connected,
+      socketId: p.isBot ? null : p.socketId,  // expose socketId for WebRTC peer mapping
       cardCount: p.hand.length,
       bankCount: p.bank.length,
       gadhaPoints: gadhaScore,
@@ -648,7 +649,21 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 11. Disconnect handling (Keep session persistent!)
+  // 11. WebRTC Signaling relay (peer-to-peer video/audio)
+  socket.on('webrtc_signal', ({ toSocketId, signal }) => {
+    // Relay the WebRTC signal to the target socket
+    if (toSocketId) {
+      io.to(toSocketId).emit('webrtc_signal', { fromSocketId: socket.id, signal });
+    }
+  });
+
+  // Let a peer know what socket ID to use to initiate
+  socket.on('webrtc_ready', ({ roomCode: rc }) => {
+    // Broadcast to others in the room that this socket is ready for WebRTC
+    socket.to(rc).emit('webrtc_peer_joined', { socketId: socket.id });
+  });
+
+  // 12. Disconnect handling (Keep session persistent!)
   socket.on('disconnect', () => {
     if (boundRoomCode && boundPlayerId) {
       const room = rooms.get(boundRoomCode);

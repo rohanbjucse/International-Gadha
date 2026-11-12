@@ -9,6 +9,8 @@ import { JokerModal } from './components/JokerModal';
 import { GameOverModal } from './components/GameOverModal';
 import { RulesModal } from './components/RulesModal';
 import { EatenCardsModal } from './components/EatenCardsModal';
+import { VideoTile } from './components/VideoTile';
+import { useWebRTC } from './hooks/useWebRTC';
 import { sounds } from './utils/sound';
 import {
   Volume2,
@@ -17,8 +19,10 @@ import {
   LogOut,
   Wifi,
   WifiOff,
-  Sparkles,
-  HelpCircle
+  Mic,
+  MicOff,
+  Video,
+  VideoOff
 } from 'lucide-react';
 
 // Connect to backend server (supports production domains, direct port 3001, and Vite dev port 5173)
@@ -40,8 +44,25 @@ export default function App() {
   const [pendingJokerCard, setPendingJokerCard] = useState(null);
   const [isMuted, setIsMuted] = useState(sounds.isMuted());
   const [statusNotification, setStatusNotification] = useState('');
+  const [videoEnabled, setVideoEnabled] = useState(false);
 
   const lastActionTimestampRef = useRef(null);
+
+  // WebRTC video/audio chat
+  const isInGame = !!(gameState && gameState.status !== 'waiting');
+  const {
+    localStream,
+    peerStreams,
+    micOn,
+    camOn,
+    toggleMic,
+    toggleCam,
+    permissionError
+  } = useWebRTC({
+    socket,
+    roomCode,
+    enabled: videoEnabled && isInGame
+  });
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -313,6 +334,38 @@ export default function App() {
             <span className="hidden-mobile">{connected ? 'Online' : 'Offline'}</span>
           </span>
 
+          {/* Video Chat Toggle (only during gameplay) */}
+          {isInGame && (
+            <>
+              <button
+                onClick={() => setVideoEnabled(v => !v)}
+                className={`nav-btn-icon ${videoEnabled ? 'nav-btn-active' : ''}`}
+                title={videoEnabled ? 'Disable Video Chat' : 'Enable Video Chat'}
+              >
+                {videoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
+              </button>
+
+              {videoEnabled && (
+                <>
+                  <button
+                    onClick={toggleMic}
+                    className={`nav-btn-icon ${!micOn ? 'nav-btn-danger' : ''}`}
+                    title={micOn ? 'Mute Mic' : 'Unmute Mic'}
+                  >
+                    {micOn ? <Mic size={18} /> : <MicOff size={18} />}
+                  </button>
+                  <button
+                    onClick={toggleCam}
+                    className={`nav-btn-icon ${!camOn ? 'nav-btn-danger' : ''}`}
+                    title={camOn ? 'Turn Off Camera' : 'Turn On Camera'}
+                  >
+                    {camOn ? <Video size={16} /> : <VideoOff size={16} />}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
           {/* Sound Toggle */}
           <button
             onClick={toggleSound}
@@ -369,6 +422,40 @@ export default function App() {
           />
         ) : (
           <div className="gameplay-viewport">
+            {/* Video Chat Strip (when enabled) */}
+            {videoEnabled && (
+              <div className="video-strip">
+                {/* Local video tile */}
+                <VideoTile
+                  stream={localStream}
+                  name={me?.name || 'You'}
+                  avatar={me?.avatar || '😎'}
+                  isMuted={!micOn}
+                  isCamOff={!camOn}
+                  isLocal={true}
+                  isActive={isMyTurn}
+                  size="xs"
+                />
+                {/* Opponent video tiles */}
+                {opponents.map(opp => {
+                  const oppStream = opp.socketId ? peerStreams[opp.socketId] : null;
+                  return (
+                    <VideoTile
+                      key={opp.id}
+                      stream={oppStream || null}
+                      name={opp.name}
+                      avatar={opp.avatar || '😎'}
+                      isActive={gameState.currentTurnPlayerId === opp.id}
+                      size="xs"
+                    />
+                  );
+                })}
+                {permissionError && (
+                  <span className="video-perm-error">{permissionError}</span>
+                )}
+              </div>
+            )}
+
             {/* Seated Opponents Area */}
             <Opponents
               opponents={opponents}

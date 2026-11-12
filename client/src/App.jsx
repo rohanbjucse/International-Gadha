@@ -286,7 +286,7 @@ export default function App() {
   } : null;
 
   return (
-    <div className="game-app-root">
+    <div className={`game-app-root${gameState?.status === 'playing' || gameState?.status === 'finished' ? ' is-playing' : ''}`}>
       {/* Global Top Navbar */}
       <header className="global-navbar">
         <div className="nav-left">

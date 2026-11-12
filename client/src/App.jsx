@@ -422,44 +422,24 @@ export default function App() {
           />
         ) : (
           <div className="gameplay-viewport">
-            {/* Video Chat Strip (when enabled) */}
-            {videoEnabled && (
-              <div className="video-strip">
-                {/* Local video tile */}
-                <VideoTile
-                  stream={localStream}
-                  name={me?.name || 'You'}
-                  avatar={me?.avatar || '😎'}
-                  isMuted={!micOn}
-                  isCamOff={!camOn}
-                  isLocal={true}
-                  isActive={isMyTurn}
-                  size="xs"
-                />
-                {/* Opponent video tiles */}
-                {opponents.map(opp => {
-                  const oppStream = opp.socketId ? peerStreams[opp.socketId] : null;
-                  return (
-                    <VideoTile
-                      key={opp.id}
-                      stream={oppStream || null}
-                      name={opp.name}
-                      avatar={opp.avatar || '😎'}
-                      isActive={gameState.currentTurnPlayerId === opp.id}
-                      size="xs"
-                    />
-                  );
-                })}
-                {permissionError && (
-                  <span className="video-perm-error">{permissionError}</span>
-                )}
+            {permissionError && (
+              <div className="video-perm-toast">
+                <span>⚠️ {permissionError}</span>
               </div>
             )}
 
-            {/* Seated Opponents Area */}
+            {/* Seated Opponents Area (Integrated Video & Live Avatars) */}
             <Opponents
               opponents={opponents}
               currentTurnPlayerId={gameState.currentTurnPlayerId}
+              videoEnabled={videoEnabled}
+              localPlayer={me}
+              localStream={localStream}
+              peerStreams={peerStreams}
+              micOn={micOn}
+              camOn={camOn}
+              onToggleMic={toggleMic}
+              onToggleCam={toggleCam}
             />
 
             {/* Table Area */}

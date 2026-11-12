@@ -23,7 +23,7 @@ export function VideoTile({
     }
   }, [stream]);
 
-  const hasVideo = stream && !isCamOff && stream.getVideoTracks().length > 0;
+  const hasVideo = stream && !isCamOff && typeof stream.getVideoTracks === 'function' && stream.getVideoTracks().length > 0;
 
   return (
     <div className={`video-tile video-tile-${size} ${isActive ? 'video-tile-active' : ''} ${isLocal ? 'video-tile-local' : ''}`}>

@@ -650,17 +650,30 @@ io.on('connection', (socket) => {
   });
 
   // 11. WebRTC Signaling relay (peer-to-peer video/audio)
-  socket.on('webrtc_signal', ({ toSocketId, signal }) => {
-    // Relay the WebRTC signal to the target socket
+  socket.on('webrtc_offer', ({ toSocketId, offer }) => {
     if (toSocketId) {
-      io.to(toSocketId).emit('webrtc_signal', { fromSocketId: socket.id, signal });
+      io.to(toSocketId).emit('webrtc_offer', { fromSocketId: socket.id, offer });
     }
   });
 
-  // Let a peer know what socket ID to use to initiate
+  socket.on('webrtc_answer', ({ toSocketId, answer }) => {
+    if (toSocketId) {
+      io.to(toSocketId).emit('webrtc_answer', { fromSocketId: socket.id, answer });
+    }
+  });
+
+  socket.on('webrtc_ice_candidate', ({ toSocketId, candidate }) => {
+    if (toSocketId) {
+      io.to(toSocketId).emit('webrtc_ice_candidate', { fromSocketId: socket.id, candidate });
+    }
+  });
+
   socket.on('webrtc_ready', ({ roomCode: rc }) => {
-    // Broadcast to others in the room that this socket is ready for WebRTC
     socket.to(rc).emit('webrtc_peer_joined', { socketId: socket.id });
+  });
+
+  socket.on('webrtc_leave', ({ roomCode: rc }) => {
+    socket.to(rc).emit('webrtc_peer_left', { socketId: socket.id });
   });
 
   // 12. Disconnect handling (Keep session persistent!)

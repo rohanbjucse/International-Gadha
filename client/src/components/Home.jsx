@@ -10,7 +10,8 @@ export function Home({
   onResumeSession,
   savedSession,
   onOpenRules,
-  defaultRoomCode = ''
+  defaultRoomCode = '',
+  isConnected = true
 }) {
   const [name, setName] = useState(() => localStorage.getItem('gadha_player_name') || '');
   const [avatar, setAvatar] = useState(() => localStorage.getItem('gadha_player_avatar') || '🤠');
@@ -18,6 +19,7 @@ export function Home({
   const [activeTab, setActiveTab] = useState(defaultRoomCode ? 'join' : 'create');
   const [isMuted, setIsMuted] = useState(sounds.isMuted());
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (defaultRoomCode) {
@@ -41,8 +43,14 @@ export function Home({
       setErrorMsg('Please enter your name first!');
       return;
     }
+    if (!isConnected) {
+      setErrorMsg('Connecting to game server... Please try in a moment.');
+      return;
+    }
     setErrorMsg('');
+    setIsSubmitting(true);
     onCreateRoom(name.trim(), avatar);
+    setTimeout(() => setIsSubmitting(false), 3000);
   }
 
   function handleJoin() {
@@ -54,8 +62,14 @@ export function Home({
       setErrorMsg('Please enter a 6-digit room code!');
       return;
     }
+    if (!isConnected) {
+      setErrorMsg('Connecting to game server... Please try in a moment.');
+      return;
+    }
     setErrorMsg('');
+    setIsSubmitting(true);
     onJoinRoom(joinCode.trim().toUpperCase(), name.trim(), avatar);
+    setTimeout(() => setIsSubmitting(false), 3000);
   }
 
   function toggleSound() {
@@ -168,8 +182,13 @@ export function Home({
               <p className="tab-info-text">
                 Start a fresh room, get a 6-digit room code to share with friends, or play against AI bots!
               </p>
-              <button onClick={handleCreate} className="btn-primary w-full py-3 text-lg font-bold flex items-center justify-center gap-2">
-                <Sparkles size={20} /> Create New Room
+              <button
+                onClick={handleCreate}
+                disabled={isSubmitting}
+                className="btn-primary w-full py-3 text-lg font-bold flex items-center justify-center gap-2"
+              >
+                <Sparkles size={20} />
+                {isSubmitting ? 'Creating Room...' : !isConnected ? 'Connecting...' : 'Create New Room'}
               </button>
             </div>
           ) : (
@@ -185,9 +204,11 @@ export function Home({
               />
               <button
                 onClick={handleJoin}
+                disabled={isSubmitting}
                 className="btn-primary w-full mt-3 py-3 text-lg font-bold flex items-center justify-center gap-2"
               >
-                <LogIn size={20} /> Join Room
+                <LogIn size={20} />
+                {isSubmitting ? 'Joining Room...' : !isConnected ? 'Connecting...' : 'Join Room'}
               </button>
             </div>
           )}

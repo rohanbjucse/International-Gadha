@@ -76,8 +76,10 @@ export default function App() {
   // Initialize Socket.IO connection
   useEffect(() => {
     const s = io(SERVER_URL, {
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000,
+      timeout: 15000
     });
 
     s.on('connect', () => {
@@ -273,6 +275,9 @@ export default function App() {
 
   // Play a card
   function handlePlayCard(card) {
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!socket || !activeRoom) return;
+
     if (card.isJoker) {
       setPendingJokerCard(card);
       setIsJokerModalOpen(true);
@@ -281,7 +286,8 @@ export default function App() {
 
     sounds.playCardSnap();
     socket.emit('play_card', {
-      roomCode,
+      roomCode: activeRoom,
+      playerId: myPlayerId,
       cardId: card.id,
       chosenJokerRank: null
     }, (res) => {
@@ -293,12 +299,14 @@ export default function App() {
 
   // Confirm Joker rank selection
   function handleSelectJokerRank(rank) {
-    if (!pendingJokerCard) return;
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!pendingJokerCard || !socket || !activeRoom) return;
     setIsJokerModalOpen(false);
 
     sounds.playCardSnap();
     socket.emit('play_card', {
-      roomCode,
+      roomCode: activeRoom,
+      playerId: myPlayerId,
       cardId: pendingJokerCard.id,
       chosenJokerRank: rank
     }, (res) => {
@@ -311,14 +319,16 @@ export default function App() {
 
   // Reorder hand locally & sync to server
   function handleReorderHand(newHandOrder) {
-    if (!socket || !roomCode) return;
-    socket.emit('sort_hand', { roomCode, newHandOrder });
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!socket || !activeRoom) return;
+    socket.emit('sort_hand', { roomCode: activeRoom, playerId: myPlayerId, newHandOrder });
   }
 
   // Restart Game / Play Again
   function handleRestartGame() {
-    if (!socket || !roomCode) return;
-    socket.emit('restart_game', { roomCode }, (res) => {
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!socket || !activeRoom) return;
+    socket.emit('restart_game', { roomCode: activeRoom, playerId: myPlayerId }, (res) => {
       if (res && res.error) alert(res.error);
     });
   }
@@ -332,9 +342,10 @@ export default function App() {
 
   // Host: End Game
   function handleEndGame() {
-    if (!socket || !roomCode) return;
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!socket || !activeRoom) return;
     if (window.confirm('Are you sure you want to end this game now? Current scores will decide the International Gadha!')) {
-      socket.emit('end_game', { roomCode }, (res) => {
+      socket.emit('end_game', { roomCode: activeRoom, playerId: myPlayerId }, (res) => {
         if (res && res.error) alert(res.error);
       });
     }
@@ -342,8 +353,9 @@ export default function App() {
 
   // Send in-game chat message or reaction
   function handleSendMessage({ message, reaction }) {
-    if (!socket || !roomCode) return;
-    socket.emit('send_chat', { roomCode, message, reaction });
+    const activeRoom = roomCode || gameState?.roomCode;
+    if (!socket || !activeRoom) return;
+    socket.emit('send_chat', { roomCode: activeRoom, playerId: myPlayerId, message, reaction });
   }
 
   function toggleSound() {
@@ -479,6 +491,7 @@ export default function App() {
             savedSession={savedSessionObj}
             onOpenRules={() => setIsRulesOpen(true)}
             defaultRoomCode={urlRoomCode}
+            isConnected={connected}
           />
         ) : gameState.status === 'waiting' ? (
           <Lobby

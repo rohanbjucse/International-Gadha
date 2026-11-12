@@ -1223,6 +1223,10 @@
   z-index: 10;
 }
 
+.joker-tag-subbed {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+}
+
 .safety-pill {
   position: absolute;
   bottom: -10px;
@@ -1335,9 +1339,13 @@
 }
 
 .joker-sub-value {
-  font-size: 0.6rem;
-  color: #7c3aed;
-  font-weight: bold;
+  font-size: 0.65rem;
+  background: #7c3aed;
+  color: #ffffff;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 /* Face-down cards */
@@ -2280,7 +2288,7 @@
   }
 
   .joker-tag {
-    font-size: 0.42rem;
+    font-size: 0.38rem;
     padding: 1px 2px;
     top: 0;
     right: 0;
@@ -2290,6 +2298,11 @@
   .joker-sub-value {
     font-size: 0.42rem;
     line-height: 1;
+    background: #7c3aed;
+    color: #ffffff;
+    padding: 1px 2px;
+    border-radius: 2px;
+    font-weight: 800;
   }
 
   .joker-center-art {

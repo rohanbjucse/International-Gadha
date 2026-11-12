@@ -23,7 +23,8 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
-  }
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Port configuration
@@ -592,12 +593,27 @@ io.on('connection', (socket) => {
   });
 
   // 7. Play Card
-  socket.on('play_card', ({ roomCode, cardId, chosenJokerRank }, callback) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('play_card', ({ roomCode, playerId, cardId, chosenJokerRank }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
+    if (!room) {
+      if (typeof callback === 'function') callback({ error: 'Room not found.' });
+      return;
+    }
 
-    const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
+    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    if (!player) {
+      if (typeof callback === 'function') callback({ error: 'Player session not found.' });
+      return;
+    }
+
+    if (player.socketId !== socket.id) {
+      player.socketId = socket.id;
+      player.connected = true;
+      socket.join(normalizedCode);
+      boundRoomCode = normalizedCode;
+      boundPlayerId = player.id;
+    }
 
     const result = playCard(room, player.id, cardId, chosenJokerRank);
     if (result.error) {
@@ -609,12 +625,21 @@ io.on('connection', (socket) => {
   });
 
   // 8. Re-order Hand (Persist user-sorted hand)
-  socket.on('sort_hand', ({ roomCode, newHandOrder }) => {
-    const room = rooms.get(roomCode);
+  socket.on('sort_hand', ({ roomCode, playerId, newHandOrder }) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
     if (!room) return;
 
-    const player = room.players.find(p => p.socketId === socket.id);
+    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
     if (!player || !Array.isArray(newHandOrder)) return;
+
+    if (player.socketId !== socket.id) {
+      player.socketId = socket.id;
+      player.connected = true;
+      socket.join(normalizedCode);
+      boundRoomCode = normalizedCode;
+      boundPlayerId = player.id;
+    }
 
     // Reorder player's hand according to IDs sent
     const cardMap = new Map(player.hand.map(c => [c.id, c]));
@@ -627,17 +652,20 @@ io.on('connection', (socket) => {
 
     if (reordered.length === player.hand.length) {
       player.hand = reordered;
-      // Send back updated hand to this player
       socket.emit('game_state_update', getSanitizedGameState(room, player.id));
     }
   });
 
   // 9. Restart Game / Play Again
-  socket.on('restart_game', ({ roomCode }, callback) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('restart_game', ({ roomCode, playerId }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
+    if (!room) {
+      if (typeof callback === 'function') callback({ error: 'Room not found.' });
+      return;
+    }
 
-    const caller = room.players.find(p => p.socketId === socket.id);
+    const caller = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
     if (!caller || !caller.isHost) {
       if (typeof callback === 'function') callback({ error: 'Only host can restart the game.' });
       return;
@@ -658,12 +686,27 @@ io.on('connection', (socket) => {
   });
 
   // 10. Chat / Reaction
-  socket.on('send_chat', ({ roomCode, message, reaction }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('send_chat', ({ roomCode, playerId, message, reaction }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
+    if (!room) {
+      if (typeof callback === 'function') callback({ error: 'Room not found.' });
+      return;
+    }
 
-    const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
+    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    if (!player) {
+      if (typeof callback === 'function') callback({ error: 'Player not found in room.' });
+      return;
+    }
+
+    if (player.socketId !== socket.id) {
+      player.socketId = socket.id;
+      player.connected = true;
+      socket.join(normalizedCode);
+      boundRoomCode = normalizedCode;
+      boundPlayerId = player.id;
+    }
 
     const chatItem = {
       id: generateId('chat'),
@@ -682,7 +725,8 @@ io.on('connection', (socket) => {
       room.chatHistory.shift();
     }
 
-    io.to(roomCode).emit('chat_received', chatItem);
+    io.to(normalizedCode).emit('chat_received', chatItem);
+    if (typeof callback === 'function') callback({ success: true, chatItem });
   });
 
   // 11. WebRTC Signaling relay (peer-to-peer video/audio)
@@ -717,11 +761,12 @@ io.on('connection', (socket) => {
   });
 
   // 12. Host manually ends game
-  socket.on('end_game', ({ roomCode }, callback) => {
-    const room = rooms.get(roomCode);
+  socket.on('end_game', ({ roomCode, playerId }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
     if (!room) return callback && callback({ error: 'Room not found' });
 
-    const caller = room.players.find(p => p.socketId === socket.id);
+    const caller = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
     if (!caller || !caller.isHost) {
       return callback && callback({ error: 'Only the room host can end the game' });
     }

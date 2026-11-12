@@ -275,10 +275,12 @@ function chooseBotMove(botHand, tableCards) {
     // Strategy: Play high non-spade cards first to get rid of them safely, or safe spades!
     // Safely playing a spade gets rid of it without taking it into our bank!
     // That's a huge strategic advantage in Gadha: playing your own spade safely discards it to the table!
-    const candidateCards = safeCards.map(a => {
-      const card = botHand.find(c => c.id === a.cardId);
-      return { card, analysis: a };
-    });
+    const candidateCards = safeCards
+      .map(a => {
+        const card = botHand.find(c => c.id === a.cardId);
+        return card ? { card, analysis: a } : null;
+      })
+      .filter(Boolean);
 
     // Prioritize safely discarding Spades! Because if you play a spade safely, you don't eat it!
     const safeSpades = candidateCards.filter(c => c.card.isSpade);

@@ -39,6 +39,10 @@ export function Card({
   };
   const subRankLabel = isJoker ? getSubRankLabel(card.jokerSubstituteRank) : null;
 
+  // Corner display values
+  const cornerRank = isJoker ? (subRankLabel || 'JK') : card.label;
+  const cornerSuit = isJoker ? '🃏' : card.symbol;
+
   return (
     <div
       onClick={isPlayable ? onClick : undefined}
@@ -46,19 +50,19 @@ export function Card({
         isSelected ? 'card-selected' : ''
       } ${isJoker ? 'card-joker' : ''}`}
       style={style}
-      title={card.name}
+      title={isJoker ? (subRankLabel ? `Joker (substituting ${subRankLabel})` : 'Joker Wildcard') : card.name}
     >
       {/* Joker Wildcard Pill */}
       {isJoker && (
-        <div className="joker-tag">
-          <span>WILDCARD</span>
+        <div className={`joker-tag ${subRankLabel ? 'joker-tag-subbed' : ''}`}>
+          <span>{subRankLabel ? `JOKER = ${subRankLabel}` : 'WILDCARD'}</span>
         </div>
       )}
 
       {/* Top Left Corner */}
       <div className={`card-corner top-left ${isRed ? 'text-red' : isJoker ? 'text-purple' : 'text-dark'}`}>
-        <span className="corner-rank">{card.label}</span>
-        <span className="corner-suit">{card.symbol}</span>
+        <span className="corner-rank">{cornerRank}</span>
+        <span className="corner-suit">{cornerSuit}</span>
       </div>
 
       {/* Center Graphic */}
@@ -66,25 +70,23 @@ export function Card({
         {isJoker ? (
           <div className="joker-center-art">
             <span className="joker-emoji">🃏</span>
-            <span className="joker-label">JOKER</span>
-            {subRankLabel && (
+            {subRankLabel ? (
               <span className="joker-sub-value">= {subRankLabel}</span>
+            ) : (
+              <span className="joker-label">JOKER</span>
             )}
           </div>
         ) : (
           <div className="center-suit-symbol">
             {card.symbol}
-            {card.rank >= 11 && (
-              <span className="court-label">{card.label}</span>
-            )}
           </div>
         )}
       </div>
 
       {/* Bottom Right Corner (Inverted) */}
       <div className={`card-corner bottom-right ${isRed ? 'text-red' : isJoker ? 'text-purple' : 'text-dark'}`}>
-        <span className="corner-rank">{card.label}</span>
-        <span className="corner-suit">{card.symbol}</span>
+        <span className="corner-rank">{cornerRank}</span>
+        <span className="corner-suit">{cornerSuit}</span>
       </div>
     </div>
   );

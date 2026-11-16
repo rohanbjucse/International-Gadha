@@ -34,6 +34,7 @@ const SERVER_URL = window.location.port === '5173'
 export default function App() {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
   const [gameState, setGameState] = useState(null);
   const [myPlayerId, setMyPlayerId] = useState(() => localStorage.getItem('gadha_player_id') || null);
   const [sessionToken, setSessionToken] = useState(() => localStorage.getItem('gadha_session_token') || null);
@@ -92,13 +93,15 @@ export default function App() {
   useEffect(() => {
     const s = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 20,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       timeout: 15000
     });
 
     s.on('connect', () => {
       setConnected(true);
+      setHasConnectedOnce(true);
 
       // Check URL query parameters or localStorage for auto-reconnect
       const params = new URLSearchParams(window.location.search);
@@ -136,6 +139,10 @@ export default function App() {
     });
 
     s.on('disconnect', () => {
+      setConnected(false);
+    });
+
+    s.on('connect_error', () => {
       setConnected(false);
     });
 
@@ -211,7 +218,7 @@ export default function App() {
   function emitRequest(eventName, payload) {
     return new Promise((resolve) => {
       if (!socket || !socket.connected) {
-        resolve({ error: 'Not connected to the game server. Please try again.' });
+        resolve({ error: 'Connection lost. Reconnecting to the game server; please try again when it is online.' });
         return;
       }
 
@@ -385,7 +392,8 @@ export default function App() {
   // Derive active game data
   const me = gameState?.players?.find(p => p.id === myPlayerId);
   const opponents = gameState?.players?.filter(p => p.id !== myPlayerId) || [];
-  const isMyTurn = gameState?.currentTurnPlayerId === myPlayerId;
+  const isTurnResolving = !!gameState?.turnResolutionPending;
+  const isMyTurn = !isTurnResolving && gameState?.currentTurnPlayerId === myPlayerId;
   const activePlayer = gameState?.players?.find(p => p.id === gameState?.currentTurnPlayerId);
   const isHost = me?.isHost || false;
 
@@ -422,10 +430,16 @@ export default function App() {
           {/* Connection status indicator */}
           <span
             className={`nav-status-pill ${connected ? 'status-online' : 'status-offline'}`}
-            title={connected ? 'Connected to Game Server' : 'Connecting to Server...'}
+            title={connected
+              ? 'Connected to Game Server'
+              : hasConnectedOnce
+                ? 'Connection lost. Reconnecting automatically...'
+                : 'Connecting to Game Server...'}
           >
             {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
-            <span className="hidden-mobile">{connected ? 'Online' : 'Offline'}</span>
+            <span className="hidden-mobile">
+              {connected ? 'Online' : hasConnectedOnce ? 'Reconnecting' : 'Connecting'}
+            </span>
           </span>
 
           {/* Video Chat Toggle (during room) */}
@@ -576,8 +590,16 @@ export default function App() {
                 lastAction={gameState.lastAction}
                 activePlayer={activePlayer}
                 isMyTurn={isMyTurn}
+                isTurnResolving={isTurnResolving}
                 myPlayerId={myPlayerId}
                 animationAction={gameState.history?.[gameState.history.length - 1]}
+                onActionAnimationComplete={actionId => {
+                  if (!socket?.connected || !gameState.roomCode || !actionId) return;
+                  socket.emit('turn_animation_complete', {
+                    roomCode: gameState.roomCode,
+                    actionId
+                  });
+                }}
               />
             </div>
 
@@ -586,6 +608,7 @@ export default function App() {
               hand={me?.hand || []}
               bank={me?.bank || []}
               isMyTurn={isMyTurn}
+              isTurnResolving={isTurnResolving}
               onPlayCard={handlePlayCard}
               onReorderHand={handleReorderHand}
               onOpenEatenCards={() => setIsEatenModalOpen(true)}

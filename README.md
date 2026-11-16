@@ -83,6 +83,8 @@ At each turn, a player plays 1 card face-up onto the center table:
   - Browser refresh, back button, or temporary network drops do **not** remove your seat while the game server remains running.
   - `sessionToken` + `playerId` restore your exact seat, hand, and turn instantly.
   - Rooms are currently held in server memory and do not survive a server restart.
+- **Reliable turn pacing:** The next turn waits for every connected player to finish the card/capture animation. A server timeout releases the turn if a client disconnects or fails to acknowledge.
+- **Connection recovery:** The client retries the game-server connection automatically. Render's free service may sleep when idle, so waking can take time; an always-on service plan is needed to avoid that delay.
 - **Web Audio Sound Synthesizer:** Built-in crisp card snaps, safe chimes, danger alarms, victory fanfares, and hilarious donkey "Hee-Haw" sounds without external asset dependencies.
 - **Responsive Mobile & Desktop Design:** Luxurious casino-felt table, fanned hand, and card animations.
 
@@ -104,6 +106,8 @@ http://localhost:3001
 
 ### Tests
 Run `npm test` for deterministic game-engine and socket-level regression tests. The socket tests start and stop their own temporary server.
+
+The Render deployment includes `/api/health` as its service health check. Because active rooms are in memory, a server restart still ends those rooms even when clients reconnect automatically.
 
 ### Development Mode (with hot-reload)
 To run client and server independently during development:

@@ -58,7 +58,8 @@ function TableActionAnimation({
           '--throw-y': `${targetPosition?.y || 0}px`
         }}
         aria-hidden="true"
-        onAnimationEnd={() => {
+        onAnimationEnd={event => {
+          if (event.target !== event.currentTarget) return;
           if (isEating) onPhaseChange('identify');
           else onDone();
         }}
@@ -73,7 +74,9 @@ function TableActionAnimation({
       <div
         className="table-identify-pause"
         aria-live="polite"
-        onAnimationEnd={() => onPhaseChange('gather')}
+        onAnimationEnd={event => {
+          if (event.target === event.currentTarget) onPhaseChange('gather');
+        }}
       >
         {eatenCards.length} matched cards
       </div>
@@ -118,8 +121,10 @@ export function Table({
   lastAction,
   activePlayer,
   isMyTurn,
+  isTurnResolving,
   myPlayerId,
-  animationAction
+  animationAction,
+  onActionAnimationComplete
 }) {
   const [dismissedToastKey, setDismissedToastKey] = useState('');
   const [animationState, setAnimationState] = useState({ active: null, queuedCaptures: [] });
@@ -132,6 +137,7 @@ export function Table({
   const tableSurfaceRef = useRef(null);
   const slotPositionsRef = useRef(new Map());
   const cardPositionsRef = useRef(new Map());
+  const completedAnimationIdsRef = useRef(new Set());
   const incomingAction = animationAction || lastAction;
   const incomingActionKey = incomingAction ? JSON.stringify(incomingAction) : '';
   const seenActionKeyRef = useRef(incomingActionKey);
@@ -195,6 +201,18 @@ export function Table({
   }, [animationState.active, animationState.queuedCaptures, incomingAction, incomingActionKey]);
 
   const finishAnimation = () => {
+    if (!motionAction) return;
+    if (
+      motionAction.actionId &&
+      completedAnimationIdsRef.current.has(motionAction.actionId)
+    ) {
+      return;
+    }
+
+    if (motionAction.actionId) {
+      completedAnimationIdsRef.current.add(motionAction.actionId);
+      onActionAnimationComplete?.(motionAction.actionId);
+    }
     setCompletedAnimationKey(animationKey);
     setAnimationPhase('throw');
     setAnimationState(current => ({
@@ -266,7 +284,11 @@ export function Table({
         )}
 
         <div className={`turn-status-indicator ${isMyTurn ? 'turn-pulse-me' : ''}`}>
-          {isMyTurn ? (
+          {isTurnResolving ? (
+            <span className="flex items-center gap-1.5 text-amber-200">
+              <span className="status-dot-other" /> Resolving {activePlayer?.name ? `${activePlayer.name}'s` : 'the'} turn...
+            </span>
+          ) : isMyTurn ? (
             <span className="flex items-center gap-1.5 font-bold text-emerald-300">
               <span className="status-dot-active" /> YOUR TURN!
             </span>

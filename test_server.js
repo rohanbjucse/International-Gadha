@@ -115,8 +115,21 @@ function createStateTracker(socket, initialState = null) {
 function attachAutoPlayer(socket, roomCode, playerId, getEnabled) {
   let moveInFlight = false;
   let moveError = null;
+  const acknowledgedActions = new Set();
   function playForState(state) {
-    if (!getEnabled() || moveInFlight || state.status !== 'playing') return;
+    if (!getEnabled() || state.status !== 'playing') return;
+    if (state.turnResolutionPending && state.pendingActionId) {
+      if (acknowledgedActions.has(state.pendingActionId)) return;
+      acknowledgedActions.add(state.pendingActionId);
+      request(socket, 'turn_animation_complete', {
+        roomCode,
+        actionId: state.pendingActionId
+      }).then(result => {
+        if (!result?.success) moveError = new Error(result?.error || 'Animation acknowledgement failed.');
+      }).catch(error => { moveError = error; });
+      return;
+    }
+    if (moveInFlight) return;
     if (state.currentTurnPlayerId !== playerId) return;
 
     const player = state.players.find(item => item.id === playerId);
@@ -145,6 +158,63 @@ function attachAutoPlayer(socket, roomCode, playerId, getEnabled) {
 
 function waitForFinished(tracker, timeoutMs = 20000) {
   return tracker.waitFor(state => state.status === 'finished', timeoutMs);
+}
+
+async function testBotWaitsForAnimation(url) {
+  const socket = await connectSocket(url);
+  const tracker = createStateTracker(socket);
+  const created = await request(socket, 'create_room', { playerName: 'Turn Pacing Test' });
+  assert.equal(created?.success, true, 'pacing test room creation succeeds');
+
+  for (let i = 0; i < 2; i++) {
+    const added = await request(socket, 'add_bot', { roomCode: created.roomCode });
+    assert.equal(added?.success, true, 'pacing test adds both bots');
+  }
+
+  assert.equal(
+    (await request(socket, 'start_game', { roomCode: created.roomCode })).success,
+    true,
+    'pacing test game starts'
+  );
+  const initialState = await tracker.waitFor(state => state.status === 'playing');
+  const host = initialState.players.find(player => player.id === created.playerId);
+  const card = host.hand[0];
+  assert.equal(
+    (await request(socket, 'play_card', {
+      roomCode: created.roomCode,
+      cardId: card.id,
+      chosenJokerRank: card.isJoker ? 1 : null
+    })).success,
+    true,
+    'human turn is accepted'
+  );
+
+  const pendingState = await tracker.waitFor(state => state.turnResolutionPending);
+  assert.equal(pendingState.currentTurnPlayerId, created.playerId, 'turn remains with the player while resolving');
+  assert.ok(pendingState.pendingActionId, 'pending action has an acknowledgement ID');
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(tracker.latest.history.length, 1, 'bot does not play before animation acknowledgement');
+  assert.equal(tracker.latest.currentTurnPlayerId, created.playerId, 'turn does not advance before acknowledgement');
+
+  const acknowledged = await request(socket, 'turn_animation_complete', {
+    roomCode: created.roomCode,
+    actionId: pendingState.pendingActionId
+  });
+  assert.equal(acknowledged?.success, true, 'animation acknowledgement is accepted');
+  const botState = await tracker.waitFor(state => state.history.length === 2);
+  const botAction = botState.history[1];
+  assert.equal(
+    botState.players.find(player => player.id === botAction.playerId)?.isBot,
+    true,
+    'bot takes its turn after the animation acknowledgement'
+  );
+  const fallbackBotState = await tracker.waitFor(state => state.history.length === 3, 3000);
+  assert.equal(
+    fallbackBotState.players.find(player => player.id === fallbackBotState.history[2].playerId)?.isBot,
+    true,
+    'a missing animation acknowledgement eventually releases the next bot turn'
+  );
+  socket.disconnect();
 }
 
 async function createBotGame(url, playerCount, roomName) {
@@ -193,7 +263,12 @@ async function run() {
   const port = await getFreePort();
   const url = `http://127.0.0.1:${port}`;
   serverProcess = spawn(process.execPath, ['server/server.js'], {
-    env: { ...process.env, PORT: String(port), BOT_TURN_DELAY_MS: '1' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      BOT_TURN_DELAY_MS: '1',
+      TURN_RESOLUTION_FALLBACK_MS: '1000'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   serverProcess.stdout.on('data', data => serverOutput.push(data.toString()));
@@ -225,6 +300,8 @@ async function run() {
     assert.equal(finalLeave.removed, true, 'last player can close an empty lobby');
     departingHost.disconnect();
     successorSocket.disconnect();
+
+    await testBotWaitsForAnimation(url);
 
     const hostSocket = await connectSocket(url);
     const hostTracker = createStateTracker(hostSocket);
@@ -300,7 +377,30 @@ async function run() {
     ]);
     assert.equal(duplicateMoves.filter(result => result.success).length, 1, 'only one simultaneous duplicate move succeeds');
     assert.equal(duplicateMoves.filter(result => result.error).length, 1, 'the second duplicate move is rejected');
-    await hostTracker.waitFor(state => state.currentTurnPlayerId !== created.playerId);
+    const pendingMove = await hostTracker.waitFor(state => state.turnResolutionPending);
+    assert.equal(pendingMove.currentTurnPlayerId, created.playerId, 'the active turn remains locked during resolution');
+    const blockedMove = await request(hostSocket, 'play_card', {
+      roomCode: created.roomCode,
+      cardId: hostTracker.latest.players.find(player => player.id === created.playerId).hand[0].id
+    });
+    assert.match(blockedMove.error, /resolving/i, 'another card cannot be played during the animation');
+    assert.equal(
+      (await request(hostSocket, 'turn_animation_complete', {
+        roomCode: created.roomCode,
+        actionId: pendingMove.pendingActionId
+      })).success,
+      true,
+      'the active player can finish the turn animation'
+    );
+    assert.equal(
+      (await request(guestSocket, 'turn_animation_complete', {
+        roomCode: created.roomCode,
+        actionId: pendingMove.pendingActionId
+      })).success,
+      true,
+      'the other connected player can finish the turn animation'
+    );
+    await hostTracker.waitFor(state => !state.turnResolutionPending && state.currentTurnPlayerId !== created.playerId);
     originalHand = hostTracker.latest.players.find(player => player.id === created.playerId).hand.map(card => card.id);
 
     hostSocket.disconnect();

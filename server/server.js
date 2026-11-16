@@ -31,6 +31,11 @@ const io = new Server(server, {
 // Port configuration
 const PORT = process.env.PORT || 3001;
 const BOT_TURN_DELAY_MS = Number(process.env.BOT_TURN_DELAY_MS) || 1100;
+const configuredTurnResolutionFallbackMs = Number(process.env.TURN_RESOLUTION_FALLBACK_MS);
+const TURN_RESOLUTION_FALLBACK_MS = Number.isFinite(configuredTurnResolutionFallbackMs)
+  && configuredTurnResolutionFallbackMs > 0
+  ? configuredTurnResolutionFallbackMs
+  : 15000;
 
 // Storage for active game rooms
 const rooms = new Map();
@@ -107,6 +112,8 @@ function getSanitizedGameState(room, requestingPlayerId) {
     players: playersSummary,
     currentTurnPlayerId: room.currentTurnPlayerId,
     turnIndex: room.turnIndex,
+    turnResolutionPending: room.turnResolutionPending || false,
+    pendingActionId: room.pendingActionId || null,
     lastAction: room.lastAction,
     history: room.history.slice(-60),
     chatHistory: (room.chatHistory || []).slice(-60),
@@ -139,11 +146,52 @@ function scheduleRoomCleanup(room) {
   const expiryMs = room.status === 'playing' ? 2 * 60 * 60 * 1000 : 30 * 60 * 1000;
   room.cleanupTimer = setTimeout(() => {
     if (!room.players.some(player => !player.isBot && player.connected)) {
+      if (room.botTurnTimer) clearTimeout(room.botTurnTimer);
+      clearTurnResolution(room);
       rooms.delete(room.roomCode);
     }
     room.cleanupTimer = null;
   }, expiryMs);
   room.cleanupTimer.unref?.();
+}
+
+function clearTurnResolution(room) {
+  if (room.turnResolutionTimer) clearTimeout(room.turnResolutionTimer);
+  room.turnResolutionTimer = null;
+  room.turnResolutionPending = false;
+  room.pendingActionId = null;
+  room.pendingActionAcks?.clear();
+  room.pendingGameFinish = false;
+}
+
+function completeTurnResolution(room, actionId) {
+  if (!room?.turnResolutionPending || room.pendingActionId !== actionId) return false;
+
+  const shouldFinish = room.pendingGameFinish;
+  clearTurnResolution(room);
+  if (shouldFinish) {
+    finishGame(room);
+  } else {
+    advanceTurn(room);
+  }
+
+  broadcastRoomState(room);
+  if (room.status === 'playing') checkAndTriggerBotTurn(room);
+  return true;
+}
+
+function scheduleTurnResolution(room, actionDetails, shouldFinish) {
+  room.turnResolutionPending = true;
+  room.pendingActionId = actionDetails.actionId;
+  room.pendingGameFinish = shouldFinish;
+  room.pendingActionAcks = new Set(
+    room.players.filter(player => !player.isBot && player.connected).map(player => player.id)
+  );
+  room.turnResolutionTimer = setTimeout(
+    () => completeTurnResolution(room, actionDetails.actionId),
+    TURN_RESOLUTION_FALLBACK_MS
+  );
+  room.turnResolutionTimer.unref?.();
 }
 
 /**
@@ -172,6 +220,7 @@ function startGame(room) {
   room.status = 'playing';
   room.turnIndex = 0;
   room.currentTurnPlayerId = room.players[0].id;
+  clearTurnResolution(room);
   room.history = [];
   room.gameResults = null;
   room.lastAction = {
@@ -194,6 +243,10 @@ function startGame(room) {
 function playCard(room, playerId, cardId, chosenJokerRank = null) {
   if (room.status !== 'playing') {
     return { error: 'Game is not currently active.' };
+  }
+
+  if (room.turnResolutionPending) {
+    return { error: 'The previous turn is still resolving.' };
   }
 
   if (room.currentTurnPlayerId !== playerId) {
@@ -272,25 +325,15 @@ function playCard(room, playerId, cardId, chosenJokerRank = null) {
     };
   }
 
+  actionDetails.actionId = generateId('action');
   room.lastAction = actionDetails;
   room.history.push(actionDetails);
 
   // Check if game has ended (all players have no cards in hand)
   const remainingHandCards = room.players.reduce((sum, p) => sum + p.hand.length, 0);
-
-  if (remainingHandCards === 0) {
-    finishGame(room);
-  } else {
-    // Advance turn to next player who still has cards
-    advanceTurn(room);
-  }
+  scheduleTurnResolution(room, actionDetails, remainingHandCards === 0);
 
   broadcastRoomState(room);
-
-  // If next player is bot and game still playing, trigger bot move
-  if (room.status === 'playing') {
-    checkAndTriggerBotTurn(room);
-  }
 
   return { success: true };
 }
@@ -378,7 +421,7 @@ function promoteHost(room) {
  * Check if the active turn belongs to a bot and trigger AI move
  */
 function checkAndTriggerBotTurn(room) {
-  if (!room || room.status !== 'playing') return;
+  if (!room || room.status !== 'playing' || room.turnResolutionPending) return;
   const currentPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
   if (!currentPlayer || !currentPlayer.isBot || currentPlayer.hand.length === 0) {
     return;
@@ -467,6 +510,11 @@ io.on('connection', (socket) => {
       table: [],
       currentTurnPlayerId: null,
       turnIndex: 0,
+      turnResolutionPending: false,
+      pendingActionId: null,
+      pendingActionAcks: new Set(),
+      pendingGameFinish: false,
+      turnResolutionTimer: null,
       history: [],
       chatHistory: [],
       lastAction: null,
@@ -725,6 +773,31 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback({ success: true });
   });
 
+  socket.on('turn_animation_complete', ({ roomCode, actionId }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
+    const player = getBoundPlayer(room);
+
+    if (!room || !player) {
+      acknowledge(callback, { error: 'Player session not found in this room.' });
+      return;
+    }
+
+    if (!room.turnResolutionPending || room.pendingActionId !== actionId) {
+      acknowledge(callback, { success: true, ignored: true });
+      return;
+    }
+
+    if (!room.pendingActionAcks?.delete(player.id)) {
+      acknowledge(callback, { success: true, duplicate: true });
+      return;
+    }
+
+    const resolved = room.pendingActionAcks.size === 0
+      && completeTurnResolution(room, actionId);
+    acknowledge(callback, { success: true, resolved });
+  });
+
   // 8. Re-order Hand (Persist user-sorted hand)
   socket.on('sort_hand', ({ roomCode, newHandOrder }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
@@ -777,6 +850,11 @@ io.on('connection', (socket) => {
 
     room.status = 'waiting';
     room.table = [];
+    clearTurnResolution(room);
+    if (room.botTurnTimer) {
+      clearTimeout(room.botTurnTimer);
+      room.botTurnTimer = null;
+    }
     room.history = [];
     room.gameResults = null;
     room.lastAction = null;
@@ -810,6 +888,7 @@ io.on('connection', (socket) => {
       if (room.players.length === 0 || !room.players.some(p => !p.isBot)) {
         if (room.botTurnTimer) clearTimeout(room.botTurnTimer);
         if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+        clearTurnResolution(room);
         rooms.delete(normalizedCode);
       } else {
         broadcastRoomState(room);
@@ -823,7 +902,11 @@ io.on('connection', (socket) => {
     player.socketId = null;
     promoteHost(room);
     scheduleRoomCleanup(room);
-    broadcastRoomState(room);
+    const resolvedTurn = room.turnResolutionPending
+      && room.pendingActionAcks?.delete(player.id)
+      && room.pendingActionAcks.size === 0
+      && completeTurnResolution(room, room.pendingActionId);
+    if (!resolvedTurn) broadcastRoomState(room);
     acknowledge(callback, { success: true, sessionRetained: true });
   });
 
@@ -920,6 +1003,11 @@ io.on('connection', (socket) => {
     }
 
     if (room.status === 'playing') {
+      clearTurnResolution(room);
+      if (room.botTurnTimer) {
+        clearTimeout(room.botTurnTimer);
+        room.botTurnTimer = null;
+      }
       finishGame(room);
       room.lastAction = {
         type: 'game_ended_by_host',
@@ -942,7 +1030,11 @@ io.on('connection', (socket) => {
           player.socketId = null;
           promoteHost(room);
           scheduleRoomCleanup(room);
-          broadcastRoomState(room);
+          const resolvedTurn = room.turnResolutionPending
+            && room.pendingActionAcks?.delete(player.id)
+            && room.pendingActionAcks.size === 0
+            && completeTurnResolution(room, room.pendingActionId);
+          if (!resolvedTurn) broadcastRoomState(room);
         }
       }
     }

@@ -38,7 +38,7 @@ export function Home({
       return;
     }
     if (!isConnected) {
-      setErrorMsg('Connecting to game server... Please try in a moment.');
+      setErrorMsg('The game server is starting or reconnecting. Please wait until it shows Online, then try again.');
       return;
     }
     setErrorMsg('');
@@ -60,7 +60,7 @@ export function Home({
       return;
     }
     if (!isConnected) {
-      setErrorMsg('Connecting to game server... Please try in a moment.');
+      setErrorMsg('The game server is starting or reconnecting. Please wait until it shows Online, then try again.');
       return;
     }
     setErrorMsg('');

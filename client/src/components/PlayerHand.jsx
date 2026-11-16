@@ -13,6 +13,7 @@ export function PlayerHand({
   hand = [],
   bank = [],
   isMyTurn = false,
+  isTurnResolving = false,
   onPlayCard,
   onReorderHand,
   onOpenEatenCards,
@@ -155,7 +156,11 @@ export function PlayerHand({
 
       {/* Hand Footer Guidance */}
       <div className="hand-guidance-footer">
-        {isMyTurn ? (
+        {isTurnResolving ? (
+          <span className="text-amber-200 font-medium">
+            The card play is resolving. Next turn starts after the table animation.
+          </span>
+        ) : isMyTurn ? (
           <span className="text-emerald-300 font-medium animate-pulse flex items-center justify-center gap-1">
             <Sparkles size={14} /> Click any card to play it to the table!
           </span>

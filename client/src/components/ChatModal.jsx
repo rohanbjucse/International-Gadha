@@ -8,7 +8,8 @@ export function ChatModal({
   onClose,
   messages = [],
   onSendMessage,
-  myPlayerId
+  myPlayerId,
+  title = 'Table Chat'
 }) {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef(null);
@@ -40,7 +41,7 @@ export function ChatModal({
         <div className="chat-modal-header">
           <div className="chat-header-title">
             <MessageSquare size={18} className="text-amber-400" />
-            <span>Table Chat</span>
+            <span>{title}</span>
             <span className="chat-msg-count">({messages.length})</span>
           </div>
           <button onClick={onClose} className="chat-btn-close" title="Close Chat">

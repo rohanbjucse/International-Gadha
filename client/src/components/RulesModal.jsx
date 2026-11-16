@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, BookOpen, ShieldCheck, Utensils, AlertTriangle } from 'lucide-react';
+import { X, BookOpen, Utensils, AlertTriangle } from 'lucide-react';
 
 export function RulesModal({ isOpen, onClose }) {
   if (!isOpen) return null;
@@ -57,13 +57,11 @@ export function RulesModal({ isOpen, onClose }) {
             <p>On your turn, you play any 1 card to the center table:</p>
 
             <div className="rules-flow-grid">
-              <div className="flow-card flow-safe">
-                <div className="flex items-center gap-1 font-bold text-emerald-300">
-                  <ShieldCheck size={16} /> SAFE (Unique Move)
-                </div>
+              <div className="flow-card flow-unique">
+                <div className="font-bold text-emerald-300">Unique Play</div>
                 <p className="text-xs text-slate-300 mt-1">
                   If <strong>NO card</strong> on the table has the same rank, <strong>AND NO sum of two cards</strong> on the table equals your card's rank:
-                  Your card stays safely on the table!
+                  your card stays on the table.
                 </p>
               </div>
 
@@ -91,7 +89,7 @@ export function RulesModal({ isOpen, onClose }) {
                 <span className="step-tag">2</span>
                 <span>
                   Player A plays <strong>♥4</strong>. (1+2=3, 1+9=10, 2+9=11 — none equal 4).
-                  <strong className="text-emerald-300"> SAFE!</strong> 4 stays on table.
+                  The 4 stays on the table.
                 </span>
               </div>
               <div className="example-step">

@@ -12,14 +12,11 @@ import {
 export function PlayerHand({
   hand = [],
   bank = [],
-  handSafety = [],
   isMyTurn = false,
   onPlayCard,
   onReorderHand,
   onOpenEatenCards
 }) {
-  const safetyByCardId = new Map(handSafety.map(item => [item.cardId, item]));
-
   // Sorting helpers
   function sortByRank() {
     const sorted = [...hand].sort((a, b) => {
@@ -146,7 +143,6 @@ export function PlayerHand({
                   card={card}
                   size="lg"
                   isPlayable={isMyTurn}
-                  safety={safetyByCardId.get(card.id)}
                   onClick={() => handleCardClick(card)}
                 />
               </div>

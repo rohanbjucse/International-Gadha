@@ -10,8 +10,11 @@ import {
   Bot,
   Users,
   Sparkles,
-  BookOpen
+  BookOpen,
+  MessageSquare,
+  Video
 } from 'lucide-react';
+import { Opponents } from './Opponents';
 
 export function Lobby({
   roomCode,
@@ -21,7 +24,19 @@ export function Lobby({
   onAddBot,
   onRemovePlayer,
   onStartGame,
-  onOpenRules
+  onOpenRules,
+  onOpenChat,
+  unreadChatCount = 0,
+  videoEnabled = false,
+  localPlayer,
+  opponents = [],
+  localStream,
+  peerStreams = {},
+  peerMuteStates = {},
+  micOn,
+  camOn,
+  onToggleMic,
+  onToggleCam
 }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -44,7 +59,8 @@ export function Lobby({
 
   return (
     <div className="lobby-container animate-fade-in">
-      <div className="lobby-card">
+      <div className={`lobby-layout ${videoEnabled ? 'lobby-layout-video' : ''}`}>
+        <div className="lobby-card">
         {/* Lobby Header */}
         <div className="lobby-header">
           <div className="lobby-donkey-badge">
@@ -181,6 +197,11 @@ export function Lobby({
           <button onClick={onOpenRules} className="btn-secondary flex items-center gap-2">
             <BookOpen size={16} /> Rules & Tutorial
           </button>
+          <button onClick={onOpenChat} className="lobby-chat-button">
+            <MessageSquare size={16} />
+            Room Chat
+            {unreadChatCount > 0 && <span className="lobby-chat-unread">{unreadChatCount}</span>}
+          </button>
 
           {isHost ? (
             <button
@@ -202,6 +223,34 @@ export function Lobby({
             </div>
           )}
         </div>
+      </div>
+
+        {videoEnabled && (
+          <section className="lobby-video-panel">
+            <div className="lobby-video-heading">
+              <div>
+                <h3><Video size={16} /> Room video</h3>
+                <p>Select a video to expand it.</p>
+              </div>
+              <span>{players.filter(player => !player.isBot).length} people</span>
+            </div>
+            <Opponents
+              opponents={opponents}
+              currentTurnPlayerId={null}
+              videoEnabled
+              localPlayer={localPlayer}
+              localStream={localStream}
+              peerStreams={peerStreams}
+              peerMuteStates={peerMuteStates}
+              micOn={micOn}
+              camOn={camOn}
+              onToggleMic={onToggleMic}
+              onToggleCam={onToggleCam}
+              showStats={false}
+              showMiniHands={false}
+            />
+          </section>
+        )}
       </div>
     </div>
   );

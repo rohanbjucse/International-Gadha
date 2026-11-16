@@ -10,7 +10,6 @@ const {
   checkTableMatches,
   calculateGadhaPoints,
   getGadhaCards,
-  analyzeHandSafety,
   chooseBotMove,
   isValidJokerRank
 } = require('./gameEngine');
@@ -96,7 +95,6 @@ function getSanitizedGameState(room, requestingPlayerId) {
     if (p.id === requestingPlayerId) {
       base.hand = p.hand;
       base.bank = p.bank;
-      base.handSafety = analyzeHandSafety(p.hand, room.table);
     }
 
     return base;
@@ -110,7 +108,7 @@ function getSanitizedGameState(room, requestingPlayerId) {
     currentTurnPlayerId: room.currentTurnPlayerId,
     turnIndex: room.turnIndex,
     lastAction: room.lastAction,
-    history: room.history.slice(-15),
+    history: room.history.slice(-60),
     chatHistory: (room.chatHistory || []).slice(-60),
     gameResults: room.gameResults,
     createdAt: room.createdAt
@@ -231,7 +229,7 @@ function playCard(room, playerId, cardId, chosenJokerRank = null) {
       playerId: player.id,
       playerName: player.name,
       card,
-      message: `${player.name} played ${card.name}. Safe! Card added to table.`,
+      message: `${player.name} played ${card.name}. Card added to the table.`,
       eatenCards: [],
       pointsGained: 0,
       timestamp: Date.now()

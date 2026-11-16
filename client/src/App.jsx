@@ -4,6 +4,7 @@ import { Home } from './components/Home';
 import { Lobby } from './components/Lobby';
 import { Table } from './components/Table';
 import { Opponents } from './components/Opponents';
+import { CaptureHistory } from './components/CaptureHistory';
 import { PlayerHand } from './components/PlayerHand';
 import { JokerModal } from './components/JokerModal';
 import { GameOverModal } from './components/GameOverModal';
@@ -446,7 +447,7 @@ export default function App() {
                 setUnreadChatCount(0);
               }}
               className="nav-btn-icon nav-btn-chat"
-              title="Open Chat"
+              title={gameState.status === 'waiting' ? 'Open Lobby Chat' : 'Open Chat'}
             >
               <MessageSquare size={16} />
               {unreadChatCount > 0 && (
@@ -528,6 +529,22 @@ export default function App() {
             onRemovePlayer={handleRemovePlayer}
             onStartGame={handleStartGame}
             onOpenRules={() => setIsRulesOpen(true)}
+            onOpenChat={() => {
+              setIsChatOpen(true);
+              setUnreadChatCount(0);
+              setLatestChatToast(null);
+            }}
+            unreadChatCount={unreadChatCount}
+            videoEnabled={videoEnabled}
+            localPlayer={me}
+            opponents={opponents}
+            localStream={localStream}
+            peerStreams={peerStreams}
+            peerMuteStates={peerMuteStates}
+            micOn={micOn}
+            camOn={camOn}
+            onToggleMic={toggleMic}
+            onToggleCam={toggleCam}
           />
         ) : (
           <div className="gameplay-viewport">
@@ -553,18 +570,22 @@ export default function App() {
             />
 
             {/* Table Area */}
-            <Table
-              tableCards={gameState.table}
-              lastAction={gameState.lastAction}
-              activePlayer={activePlayer}
-              isMyTurn={isMyTurn}
-            />
+            <div className="gameplay-board-layout">
+              <Table
+                tableCards={gameState.table}
+                lastAction={gameState.lastAction}
+                activePlayer={activePlayer}
+                isMyTurn={isMyTurn}
+                myPlayerId={myPlayerId}
+                animationAction={gameState.history?.[gameState.history.length - 1]}
+              />
+              <CaptureHistory history={gameState.history || []} />
+            </div>
 
             {/* Player Hand Controls & Hand Fan */}
             <PlayerHand
               hand={me?.hand || []}
               bank={me?.bank || []}
-              handSafety={me?.handSafety || []}
               isMyTurn={isMyTurn}
               onPlayCard={handlePlayCard}
               onReorderHand={handleReorderHand}
@@ -601,6 +622,7 @@ export default function App() {
         messages={chatMessages}
         onSendMessage={handleSendMessage}
         myPlayerId={myPlayerId}
+        title={gameState?.status === 'waiting' ? 'Lobby Chat' : 'Table Chat'}
       />
 
       {/* Joker Rank Selector Modal */}

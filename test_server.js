@@ -173,6 +173,7 @@ async function createBotGame(url, playerCount, roomName) {
   const finishedState = await waitForFinished(tracker);
   assert.equal(autoPlayer.getError(), null, 'automated human player did not encounter an error');
   assert.equal(finishedState.players.every(player => player.cardCount === 0), true, 'all hands are empty');
+  assert.equal(finishedState.history.length, expectedCards, 'full turn history is available after the game');
 
   const bankCount = finishedState.players.reduce((sum, player) => sum + player.bankCount, 0);
   assert.equal(bankCount + finishedState.table.length, expectedCards, 'every dealt card is banked or left on the table');
@@ -209,6 +210,13 @@ async function run() {
       playerName: 'Successor'
     });
     const successorTracker = createStateTracker(successorSocket);
+    const lobbyChatReceived = new Promise(resolve => successorSocket.once('chat_received', resolve));
+    const lobbyChat = await request(departingHost, 'send_chat', {
+      roomCode: departingRoom.roomCode,
+      message: 'Lobby chat works'
+    });
+    assert.equal(lobbyChat.success, true, 'players can send chat while the room is waiting');
+    assert.equal((await lobbyChatReceived).message, 'Lobby chat works', 'lobby chat reaches other seated players');
     const hostLeave = await request(departingHost, 'leave_room', { roomCode: departingRoom.roomCode });
     assert.equal(hostLeave.removed, true, 'leaving a lobby removes the seat');
     const promotedState = await successorTracker.waitFor(state => state.players.length === 1);
@@ -240,6 +248,7 @@ async function run() {
     const initialState = await hostTracker.waitFor(state => state.status === 'playing');
     const hostState = initialState.players.find(player => player.id === created.playerId);
     let originalHand = hostState.hand.map(card => card.id);
+    assert.equal('handSafety' in hostState, false, 'private hand safety hints are not sent to clients');
     assert.equal(
       initialState.players.filter(player => player.id !== created.playerId).every(player => !('hand' in player)),
       true,
@@ -342,6 +351,7 @@ async function run() {
 
     const threePlayerFinish = await waitForFinished(currentHostTracker);
     assert.equal(threePlayerFinish.players.every(player => player.cardCount === 0), true);
+    assert.equal(threePlayerFinish.history.length, 54, 'all turns remain available for the capture log');
     assert.equal(hostAutoPlayer.getError(), null);
     assert.equal(guestAutoPlayer.getError(), null);
     const threePlayerBanks = threePlayerFinish.players.reduce((sum, player) => sum + player.bankCount, 0);

@@ -46,7 +46,7 @@ export function GameOverModal({
             {isMeGadha ? (
               <span className="text-rose-400">YOU ARE THE INTERNATIONAL GADHA! 🫏👑</span>
             ) : isMeWinner ? (
-              <span className="text-emerald-400">YOU ARE SAFE & VICTORIOUS! 🏆</span>
+              <span className="text-emerald-400">YOU WIN! 🏆</span>
             ) : (
               <span className="text-amber-400">GAME OVER!</span>
             )}

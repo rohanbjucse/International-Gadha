@@ -158,7 +158,7 @@ export function Table({
     ? incomingAction
     : null;
   const thrownCardId = animationPhase === 'throw'
-    ? motionAction?.card.id || pendingIncomingAction?.card.id
+    ? motionAction?.card.id || pendingIncomingAction?.card.id || null
     : null;
   const matchingCardIds = new Set(
     motionAction?.type === 'eat' && animationPhase === 'identify'
@@ -286,7 +286,7 @@ export function Table({
           >
             {Array.from({ length: slotCount }, (_, index) => {
               const card = tableSlots[index] || null;
-              const isThrownCard = card?.id === thrownCardId;
+              const isThrownCard = !!card && card.id === thrownCardId;
               const matchClass = card && matchingCardIds.has(card.id) ? 'table-card-match' : '';
               const eatingIndex = card ? eatingCardOrder.get(card.id) : undefined;
               const eatingClass = eatingIndex !== undefined ? 'table-card-eating' : '';

@@ -48,6 +48,23 @@ assert.deepEqual(
   '13 captures 9 + 4'
 );
 
+const simultaneousKingMatches = checkTableMatches(
+  [
+    card(SUITS.HEARTS, 3, 'three-hearts'),
+    card(SUITS.SPADES, 10, 'ten-spades'),
+    card(SUITS.DIAMONDS, 13, 'king-diamonds')
+  ],
+  card(SUITS.SPADES, 13, 'king-spades')
+);
+assert.deepEqual(
+  new Set(simultaneousKingMatches.allMatchedCards.map((item) => item.id)),
+  new Set(['three-hearts', 'ten-spades', 'king-diamonds']),
+  'a King captures both the 3+10 pair and the matching King'
+);
+assert.equal(simultaneousKingMatches.singleMatches.length, 1);
+assert.equal(simultaneousKingMatches.pairMatches.length, 1);
+assert.equal(simultaneousKingMatches.isSafe, false);
+
 const overlappingPairs = checkTableMatches(
   [
     card(SUITS.HEARTS, 2, 'two-hearts'),

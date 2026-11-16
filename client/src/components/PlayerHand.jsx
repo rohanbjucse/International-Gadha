@@ -15,7 +15,8 @@ export function PlayerHand({
   isMyTurn = false,
   onPlayCard,
   onReorderHand,
-  onOpenEatenCards
+  onOpenEatenCards,
+  children
 }) {
   // Sorting helpers
   function sortByRank() {
@@ -76,6 +77,7 @@ export function PlayerHand({
             <span className="font-bold">Eaten Cards:</span> {bank.length} cards
             <span className="bank-view-tag">View</span>
           </button>
+          {children}
         </div>
 
         {/* Center: Sorting Controls */}

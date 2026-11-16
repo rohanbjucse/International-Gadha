@@ -579,7 +579,6 @@ export default function App() {
                 myPlayerId={myPlayerId}
                 animationAction={gameState.history?.[gameState.history.length - 1]}
               />
-              <CaptureHistory history={gameState.history || []} />
             </div>
 
             {/* Player Hand Controls & Hand Fan */}
@@ -590,7 +589,9 @@ export default function App() {
               onPlayCard={handlePlayCard}
               onReorderHand={handleReorderHand}
               onOpenEatenCards={() => setIsEatenModalOpen(true)}
-            />
+            >
+              <CaptureHistory history={gameState.history || []} />
+            </PlayerHand>
           </div>
         )}
       </main>

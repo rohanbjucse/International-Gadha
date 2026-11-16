@@ -1,61 +1,93 @@
-const { createCard, checkTableMatches, buildDeck, SUITS } = require('./server/gameEngine');
+const assert = require('node:assert/strict');
+const {
+  createCard,
+  checkTableMatches,
+  buildDeck,
+  calculateGadhaPoints,
+  isValidJokerRank,
+  SUITS
+} = require('./server/gameEngine');
 
-console.log('Testing User Prompt Example...');
+function card(suit, rank, id) {
+  return createCard(suit, rank, id);
+}
 
-let table = [
-  createCard(SUITS.HEARTS, 1, 'ace-hearts'),
-  createCard(SUITS.CLUBS, 2, 'two-clubs'),
-  createCard(SUITS.SPADES, 9, 'nine-spades')
+for (const [playerCount, expectedDeckSize] of [[3, 54], [4, 52], [5, 55], [6, 54]]) {
+  const deck = buildDeck(playerCount);
+  assert.equal(deck.length, expectedDeckSize, `${playerCount}-player deck size`);
+  assert.equal(deck.length % playerCount, 0, `${playerCount}-player deal is equal`);
+  assert.equal(new Set(deck.map((item) => item.id)).size, deck.length, 'card IDs are unique');
+}
+
+const table = [
+  card(SUITS.HEARTS, 1, 'ace-hearts'),
+  card(SUITS.CLUBS, 2, 'two-clubs'),
+  card(SUITS.SPADES, 9, 'nine-spades')
 ];
 
-console.log('Initial Table:', table.map(c => c.name));
+const safeMove = checkTableMatches(table, card(SUITS.HEARTS, 4, 'played-four'));
+assert.equal(safeMove.isSafe, true, '4 is safe on the initial table');
 
-// Player A plays 4 of Hearts
-const pA_card = createCard(SUITS.HEARTS, 4, 'four-hearts');
-const matchA = checkTableMatches(table, pA_card);
-console.log('Player A plays 4 of Hearts -> Safe?', matchA.isSafe);
-if (matchA.isSafe) {
-  table.push(pA_card);
-}
-console.log('Table after A:', table.map(c => c.name));
-console.assert(matchA.isSafe === true, 'A should be safe');
-console.assert(table.length === 4, 'Table should have 4 cards');
+const pairCapture = checkTableMatches(
+  [...table, card(SUITS.HEARTS, 4, 'four-hearts')],
+  card(SUITS.SPADES, 3, 'played-three')
+);
+assert.deepEqual(
+  new Set(pairCapture.allMatchedCards.map((item) => item.id)),
+  new Set(['ace-hearts', 'two-clubs']),
+  'rank-independent pair sums capture both cards'
+);
 
-// Player B plays 3 of Spade
-const pB_card = createCard(SUITS.SPADES, 3, 'three-spades');
-const matchB = checkTableMatches(table, pB_card);
-console.log('Player B plays 3 of Spades -> Safe?', matchB.isSafe);
-console.log('Player B eaten cards:', matchB.allMatchedCards.map(c => c.name));
-console.assert(matchB.isSafe === false, 'B should not be safe');
-console.assert(matchB.allMatchedCards.length === 2, 'B should match 2 cards (Ace + 2)');
+const kingCapture = checkTableMatches(
+  [card(SUITS.SPADES, 9, 'nine-spades'), card(SUITS.HEARTS, 4, 'four-hearts')],
+  card(SUITS.DIAMONDS, 13, 'played-king')
+);
+assert.deepEqual(
+  new Set(kingCapture.allMatchedCards.map((item) => item.id)),
+  new Set(['nine-spades', 'four-hearts']),
+  '13 captures 9 + 4'
+);
 
-// Remove matched cards from table
-const eatenB = [...matchB.allMatchedCards, pB_card];
-const eatenBIds = new Set(matchB.allMatchedCards.map(c => c.id));
-table = table.filter(c => !eatenBIds.has(c.id));
-console.log('Table after B:', table.map(c => c.name));
-console.assert(table.length === 2, 'Table should have 2 cards left (9 of Spades, 4 of Hearts)');
+const overlappingPairs = checkTableMatches(
+  [
+    card(SUITS.HEARTS, 2, 'two-hearts'),
+    card(SUITS.CLUBS, 2, 'two-clubs'),
+    card(SUITS.DIAMONDS, 2, 'two-diamonds')
+  ],
+  card(SUITS.HEARTS, 4, 'played-four')
+);
+assert.equal(overlappingPairs.pairMatches.length, 3, 'all matching pairs are reported');
+assert.equal(overlappingPairs.allMatchedCards.length, 3, 'overlapping pairs capture each card once');
 
-// Player C plays King of Diamonds
-const pC_card = createCard(SUITS.DIAMONDS, 13, 'king-diamonds');
-const matchC = checkTableMatches(table, pC_card);
-console.log('Player C plays King of Diamonds -> Safe?', matchC.isSafe);
-console.log('Player C eaten cards:', matchC.allMatchedCards.map(c => c.name));
-console.assert(matchC.isSafe === false, 'C should not be safe');
-console.assert(matchC.allMatchedCards.length === 2, 'C should match 4 of Hearts + 9 of Spades (4+9=13)');
+const duplicateSingles = checkTableMatches(
+  [card(SUITS.HEARTS, 7, 'seven-hearts'), card(SUITS.CLUBS, 7, 'seven-clubs')],
+  card(SUITS.DIAMONDS, 7, 'played-seven')
+);
+assert.equal(duplicateSingles.allMatchedCards.length, 2, 'all direct rank matches are captured');
 
-const eatenC = [...matchC.allMatchedCards, pC_card];
-const eatenCIds = new Set(matchC.allMatchedCards.map(c => c.id));
-table = table.filter(c => !eatenCIds.has(c.id));
-console.log('Table after C:', table.map(c => c.name));
-console.assert(table.length === 0, 'Table should now be empty');
+const jokerCapture = checkTableMatches(
+  [card(SUITS.HEARTS, 2, 'two-hearts'), card(SUITS.CLUBS, 3, 'three-clubs')],
+  card(SUITS.JOKER, 0, 'joker'),
+  5
+);
+assert.equal(jokerCapture.effectiveRank, 5);
+assert.equal(jokerCapture.allMatchedCards.length, 2, 'joker choice matches pair sum');
+assert.equal(isValidJokerRank(1), true);
+assert.equal(isValidJokerRank(13), true);
+assert.equal(isValidJokerRank(0), false);
+assert.equal(isValidJokerRank(14), false);
+assert.equal(isValidJokerRank(5.5), false);
+assert.equal(isValidJokerRank('5'), false);
 
-console.log('Deck counts for 3, 4, 5, 6 players:');
-[3, 4, 5, 6].forEach(n => {
-  const deck = buildDeck(n);
-  console.log(`${n} players: ${deck.length} cards, ${deck.length / n} cards per player`);
-  console.assert(deck.length % n === 0, `Deck must divide equally by ${n}`);
-});
+assert.equal(
+  calculateGadhaPoints([
+    card(SUITS.SPADES, 1, 'ace-spades'),
+    card(SUITS.SPADES, 13, 'king-spades'),
+    card(SUITS.HEARTS, 12, 'queen-hearts'),
+    card(SUITS.JOKER, 0, 'zero-point-joker')
+  ]),
+  14,
+  'only spades contribute Gadha points'
+);
 
-console.log('ALL TESTS PASSED PERFECTLY!');
-
+console.log('Game engine tests passed.');

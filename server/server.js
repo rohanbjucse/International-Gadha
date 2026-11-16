@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
@@ -10,7 +11,8 @@ const {
   calculateGadhaPoints,
   getGadhaCards,
   analyzeHandSafety,
-  chooseBotMove
+  chooseBotMove,
+  isValidJokerRank
 } = require('./gameEngine');
 
 const app = express();
@@ -29,6 +31,7 @@ const io = new Server(server, {
 
 // Port configuration
 const PORT = process.env.PORT || 3001;
+const BOT_TURN_DELAY_MS = Number(process.env.BOT_TURN_DELAY_MS) || 1100;
 
 // Storage for active game rooms
 const rooms = new Map();
@@ -38,14 +41,23 @@ function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O, 0, 1, I for clarity
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars.charAt(crypto.randomInt(chars.length));
   }
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
 // Generate random ID
 function generateId(prefix = 'id') {
-  return `${prefix}_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`;
+  return `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
+}
+
+function normalizePlayerName(name, fallback) {
+  const normalized = typeof name === 'string' ? name.trim().slice(0, 15) : '';
+  return normalized || fallback;
+}
+
+function getCardsPerPlayer(playerCount) {
+  return Math.floor(buildDeck(playerCount).length / playerCount);
 }
 
 // Bot names generator
@@ -84,6 +96,7 @@ function getSanitizedGameState(room, requestingPlayerId) {
     if (p.id === requestingPlayerId) {
       base.hand = p.hand;
       base.bank = p.bank;
+      base.handSafety = analyzeHandSafety(p.hand, room.table);
     }
 
     return base;
@@ -116,17 +129,40 @@ function broadcastRoomState(room) {
   }
 }
 
+function scheduleRoomCleanup(room) {
+  const hasConnectedPlayer = room.players.some(player => !player.isBot && player.connected);
+  if (hasConnectedPlayer) {
+    if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+    room.cleanupTimer = null;
+    return;
+  }
+  if (room.cleanupTimer) return;
+
+  const expiryMs = room.status === 'playing' ? 2 * 60 * 60 * 1000 : 30 * 60 * 1000;
+  room.cleanupTimer = setTimeout(() => {
+    if (!room.players.some(player => !player.isBot && player.connected)) {
+      rooms.delete(room.roomCode);
+    }
+    room.cleanupTimer = null;
+  }, expiryMs);
+  room.cleanupTimer.unref?.();
+}
+
 /**
  * Start game and deal cards equally
  */
 function startGame(room) {
+  if (room.status !== 'waiting') {
+    return { error: 'Game has already started.' };
+  }
+
   const playerCount = room.players.length;
   if (playerCount < 3 || playerCount > 6) {
     return { error: 'Game requires 3 to 6 players to start.' };
   }
 
   const deck = shuffle(buildDeck(playerCount));
-  const cardsPerPlayer = Math.floor(deck.length / playerCount);
+  const cardsPerPlayer = getCardsPerPlayer(playerCount);
 
   // Deal cards equally
   room.players.forEach((p, idx) => {
@@ -172,9 +208,14 @@ function playCard(room, playerId, cardId, chosenJokerRank = null) {
   const cardIndex = player.hand.findIndex(c => c.id === cardId);
   if (cardIndex === -1) return { error: 'Card not found in hand.' };
 
-  const [card] = player.hand.splice(cardIndex, 1);
+  const card = player.hand[cardIndex];
+  if (card.isJoker && !isValidJokerRank(chosenJokerRank)) {
+    return { error: 'Choose a Joker rank from 1 to 13.' };
+  }
+
+  player.hand.splice(cardIndex, 1);
   if (card.isJoker) {
-    card.jokerSubstituteRank = chosenJokerRank || 1;
+    card.jokerSubstituteRank = chosenJokerRank;
   }
 
   // Check matching rules against table
@@ -323,6 +364,18 @@ function finishGame(room) {
   };
 }
 
+function promoteHost(room) {
+  const connectedHost = room.players.find(p => p.isHost && !p.isBot && p.connected);
+  if (connectedHost) return;
+
+  const nextHost = room.players.find(p => !p.isBot && p.connected);
+  if (nextHost) {
+    room.players.forEach(p => {
+      p.isHost = p.id === nextHost.id;
+    });
+  }
+}
+
 /**
  * Check if the active turn belongs to a bot and trigger AI move
  */
@@ -366,7 +419,7 @@ function checkAndTriggerBotTurn(room) {
     } catch (e) {
       console.error('Error executing bot move:', e);
     }
-  }, 1100);
+  }, BOT_TURN_DELAY_MS);
 }
 
 // ---------------- Socket.IO Event Handlers ----------------
@@ -375,8 +428,22 @@ io.on('connection', (socket) => {
   let boundRoomCode = null;
   let boundPlayerId = null;
 
+  function getBoundPlayer(room) {
+    if (!room || room.roomCode !== boundRoomCode) return null;
+    return room.players.find(p => !p.isBot && p.socketId === socket.id) || null;
+  }
+
+  function acknowledge(callback, response) {
+    if (typeof callback === 'function') callback(response);
+  }
+
   // 1. Create Room
   socket.on('create_room', ({ playerName, avatar }, callback) => {
+    if (boundRoomCode) {
+      acknowledge(callback, { error: 'Leave your current room before creating another.' });
+      return;
+    }
+
     const roomCode = generateRoomCode();
     const playerId = generateId('p');
     const sessionToken = generateId('token');
@@ -389,7 +456,7 @@ io.on('connection', (socket) => {
         {
           id: playerId,
           sessionToken,
-          name: (playerName || 'Player 1').trim().substring(0, 15),
+          name: normalizePlayerName(playerName, 'Player 1'),
           avatar: avatar || '🤠',
           isHost: true,
           isBot: false,
@@ -428,6 +495,11 @@ io.on('connection', (socket) => {
 
   // 2. Join Room
   socket.on('join_room', ({ roomCode, playerName, avatar }, callback) => {
+    if (boundRoomCode) {
+      acknowledge(callback, { error: 'Leave your current room before joining another.' });
+      return;
+    }
+
     const normalizedCode = (roomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
 
@@ -451,7 +523,7 @@ io.on('connection', (socket) => {
     const newPlayer = {
       id: playerId,
       sessionToken,
-      name: (playerName || `Player ${room.players.length + 1}`).trim().substring(0, 15),
+      name: normalizePlayerName(playerName, `Player ${room.players.length + 1}`),
       avatar: avatar || '😎',
       isHost: false,
       isBot: false,
@@ -484,6 +556,11 @@ io.on('connection', (socket) => {
     const normalizedCode = (roomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
 
+    if (boundRoomCode && boundRoomCode !== normalizedCode) {
+      acknowledge(callback, { error: 'Leave your current room before resuming another.' });
+      return;
+    }
+
     if (!room) {
       if (typeof callback === 'function') callback({ error: 'Room expired or not found.' });
       return;
@@ -495,9 +572,13 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Reattach socket
+    const previousSocketId = player.socketId;
     player.socketId = socket.id;
     player.connected = true;
+    scheduleRoomCleanup(room);
+    if (previousSocketId && previousSocketId !== socket.id) {
+      io.sockets.sockets.get(previousSocketId)?.disconnect(true);
+    }
     socket.join(normalizedCode);
     boundRoomCode = normalizedCode;
     boundPlayerId = playerId;
@@ -522,15 +603,24 @@ io.on('connection', (socket) => {
   // 4. Add Bot Player
   socket.on('add_bot', ({ roomCode }, callback) => {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if (!room) {
+      acknowledge(callback, { error: 'Room not found.' });
+      return;
+    }
+
+    const caller = getBoundPlayer(room);
+    if (!caller || !caller.isHost) {
+      acknowledge(callback, { error: 'Only the room host can add bots.' });
+      return;
+    }
 
     if (room.status !== 'waiting') {
-      if (typeof callback === 'function') callback({ error: 'Cannot add bot while game is in progress.' });
+      acknowledge(callback, { error: 'Cannot add bot while game is in progress.' });
       return;
     }
 
     if (room.players.length >= 6) {
-      if (typeof callback === 'function') callback({ error: 'Maximum 6 players allowed.' });
+      acknowledge(callback, { error: 'Maximum 6 players allowed.' });
       return;
     }
 
@@ -552,48 +642,69 @@ io.on('connection', (socket) => {
     };
 
     room.players.push(botPlayer);
-    if (typeof callback === 'function') callback({ success: true });
+    acknowledge(callback, { success: true });
     broadcastRoomState(room);
   });
 
   // 5. Remove Bot or Player (Host only)
   socket.on('remove_player', ({ roomCode, targetPlayerId }, callback) => {
     const room = rooms.get(roomCode);
-    if (!room || room.status !== 'waiting') return;
-
-    const caller = room.players.find(p => p.socketId === socket.id);
-    if (!caller || !caller.isHost) {
-      if (typeof callback === 'function') callback({ error: 'Only the host can remove players.' });
+    if (!room) {
+      acknowledge(callback, { error: 'Room not found.' });
       return;
     }
 
+    if (room.status !== 'waiting') {
+      acknowledge(callback, { error: 'Players can only be removed while the room is waiting.' });
+      return;
+    }
+
+    const caller = getBoundPlayer(room);
+    if (!caller || !caller.isHost) {
+      acknowledge(callback, { error: 'Only the room host can remove players.' });
+      return;
+    }
+
+    const target = room.players.find(p => p.id === targetPlayerId);
+    if (!target || target.id === caller.id) {
+      acknowledge(callback, { error: 'That player cannot be removed.' });
+      return;
+    }
     room.players = room.players.filter(p => p.id !== targetPlayerId);
-    if (typeof callback === 'function') callback({ success: true });
+    acknowledge(callback, { success: true });
     broadcastRoomState(room);
   });
 
   // 6. Start Game (Host only)
   socket.on('start_game', ({ roomCode }, callback) => {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if (!room) {
+      acknowledge(callback, { error: 'Room not found.' });
+      return;
+    }
 
-    const caller = room.players.find(p => p.socketId === socket.id);
+    const caller = getBoundPlayer(room);
     if (!caller || !caller.isHost) {
-      if (typeof callback === 'function') callback({ error: 'Only the room host can start the game.' });
+      acknowledge(callback, { error: 'Only the room host can start the game.' });
+      return;
+    }
+
+    if (room.players.some(p => !p.isBot && !p.connected)) {
+      acknowledge(callback, { error: 'Wait for disconnected players to reconnect or remove them first.' });
       return;
     }
 
     const res = startGame(room);
     if (res.error) {
-      if (typeof callback === 'function') callback({ error: res.error });
+      acknowledge(callback, { error: res.error });
       return;
     }
 
-    if (typeof callback === 'function') callback({ success: true });
+    acknowledge(callback, { success: true });
   });
 
   // 7. Play Card
-  socket.on('play_card', ({ roomCode, playerId, cardId, chosenJokerRank }, callback) => {
+  socket.on('play_card', ({ roomCode, cardId, chosenJokerRank }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
     if (!room) {
@@ -601,18 +712,10 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    const player = getBoundPlayer(room);
     if (!player) {
       if (typeof callback === 'function') callback({ error: 'Player session not found.' });
       return;
-    }
-
-    if (player.socketId !== socket.id) {
-      player.socketId = socket.id;
-      player.connected = true;
-      socket.join(normalizedCode);
-      boundRoomCode = normalizedCode;
-      boundPlayerId = player.id;
     }
 
     const result = playCard(room, player.id, cardId, chosenJokerRank);
@@ -625,39 +728,37 @@ io.on('connection', (socket) => {
   });
 
   // 8. Re-order Hand (Persist user-sorted hand)
-  socket.on('sort_hand', ({ roomCode, playerId, newHandOrder }) => {
+  socket.on('sort_hand', ({ roomCode, newHandOrder }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
-    if (!room) return;
-
-    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
-    if (!player || !Array.isArray(newHandOrder)) return;
-
-    if (player.socketId !== socket.id) {
-      player.socketId = socket.id;
-      player.connected = true;
-      socket.join(normalizedCode);
-      boundRoomCode = normalizedCode;
-      boundPlayerId = player.id;
+    if (!room) {
+      acknowledge(callback, { error: 'Room not found.' });
+      return;
     }
 
-    // Reorder player's hand according to IDs sent
+    const player = getBoundPlayer(room);
+    if (!player || !Array.isArray(newHandOrder)) {
+      acknowledge(callback, { error: 'Invalid player session or hand order.' });
+      return;
+    }
+
     const cardMap = new Map(player.hand.map(c => [c.id, c]));
-    const reordered = [];
-    for (const id of newHandOrder) {
-      if (cardMap.has(id)) {
-        reordered.push(cardMap.get(id));
-      }
+    const orderIsValid = newHandOrder.length === player.hand.length
+      && new Set(newHandOrder).size === player.hand.length
+      && newHandOrder.every(id => typeof id === 'string' && cardMap.has(id));
+
+    if (!orderIsValid) {
+      acknowledge(callback, { error: 'Hand order must contain every card exactly once.' });
+      return;
     }
 
-    if (reordered.length === player.hand.length) {
-      player.hand = reordered;
-      socket.emit('game_state_update', getSanitizedGameState(room, player.id));
-    }
+    player.hand = newHandOrder.map(id => cardMap.get(id));
+    socket.emit('game_state_update', getSanitizedGameState(room, player.id));
+    acknowledge(callback, { success: true });
   });
 
   // 9. Restart Game / Play Again
-  socket.on('restart_game', ({ roomCode, playerId }, callback) => {
+  socket.on('restart_game', ({ roomCode }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
     if (!room) {
@@ -665,9 +766,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const caller = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    const caller = getBoundPlayer(room);
     if (!caller || !caller.isHost) {
       if (typeof callback === 'function') callback({ error: 'Only host can restart the game.' });
+      return;
+    }
+
+    if (room.status !== 'finished') {
+      acknowledge(callback, { error: 'The game must be finished before it can be restarted.' });
       return;
     }
 
@@ -685,8 +791,46 @@ io.on('connection', (socket) => {
     broadcastRoomState(room);
   });
 
+  socket.on('leave_room', ({ roomCode }, callback) => {
+    const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
+    const room = rooms.get(normalizedCode);
+    const player = getBoundPlayer(room);
+
+    if (!room || !player) {
+      acknowledge(callback, { error: 'Player session not found in this room.' });
+      return;
+    }
+
+    socket.leave(normalizedCode);
+    boundRoomCode = null;
+    boundPlayerId = null;
+
+    if (room.status === 'waiting' || room.status === 'finished') {
+      room.players = room.players.filter(p => p.id !== player.id);
+      promoteHost(room);
+
+      if (room.players.length === 0 || !room.players.some(p => !p.isBot)) {
+        if (room.botTurnTimer) clearTimeout(room.botTurnTimer);
+        if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+        rooms.delete(normalizedCode);
+      } else {
+        broadcastRoomState(room);
+      }
+
+      acknowledge(callback, { success: true, removed: true });
+      return;
+    }
+
+    player.connected = false;
+    player.socketId = null;
+    promoteHost(room);
+    scheduleRoomCleanup(room);
+    broadcastRoomState(room);
+    acknowledge(callback, { success: true, sessionRetained: true });
+  });
+
   // 10. Chat / Reaction
-  socket.on('send_chat', ({ roomCode, playerId, message, reaction }, callback) => {
+  socket.on('send_chat', ({ roomCode, message, reaction }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
     if (!room) {
@@ -694,26 +838,23 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const player = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    const player = getBoundPlayer(room);
     if (!player) {
       if (typeof callback === 'function') callback({ error: 'Player not found in room.' });
       return;
     }
 
-    if (player.socketId !== socket.id) {
-      player.socketId = socket.id;
-      player.connected = true;
-      socket.join(normalizedCode);
-      boundRoomCode = normalizedCode;
-      boundPlayerId = player.id;
+    if (typeof message !== 'string' || !message.trim()) {
+      acknowledge(callback, { error: 'Chat message cannot be empty.' });
+      return;
     }
 
     const chatItem = {
       id: generateId('chat'),
       senderId: player.id,
       senderName: player.name,
-      message: message ? message.substring(0, 100) : '',
-      reaction: reaction || null,
+      message: message.trim().substring(0, 100),
+      reaction: typeof reaction === 'string' ? reaction.substring(0, 16) : null,
       timestamp: Date.now()
     };
 
@@ -730,43 +871,52 @@ io.on('connection', (socket) => {
   });
 
   // 11. WebRTC Signaling relay (peer-to-peer video/audio)
+  function canRelayTo(toSocketId) {
+    const room = rooms.get(boundRoomCode);
+    return !!getBoundPlayer(room)
+      && room.players.some(player => player.socketId === toSocketId);
+  }
+
   socket.on('webrtc_offer', ({ toSocketId, offer }) => {
-    if (toSocketId) {
+    if (toSocketId && canRelayTo(toSocketId)) {
       io.to(toSocketId).emit('webrtc_offer', { fromSocketId: socket.id, offer });
     }
   });
 
   socket.on('webrtc_answer', ({ toSocketId, answer }) => {
-    if (toSocketId) {
+    if (toSocketId && canRelayTo(toSocketId)) {
       io.to(toSocketId).emit('webrtc_answer', { fromSocketId: socket.id, answer });
     }
   });
 
   socket.on('webrtc_ice_candidate', ({ toSocketId, candidate }) => {
-    if (toSocketId) {
+    if (toSocketId && canRelayTo(toSocketId)) {
       io.to(toSocketId).emit('webrtc_ice_candidate', { fromSocketId: socket.id, candidate });
     }
   });
 
   socket.on('webrtc_ready', ({ roomCode: rc }) => {
+    if (!getBoundPlayer(rooms.get(boundRoomCode)) || rc !== boundRoomCode) return;
     socket.to(rc).emit('webrtc_peer_joined', { socketId: socket.id });
   });
 
   socket.on('webrtc_leave', ({ roomCode: rc }) => {
+    if (!getBoundPlayer(rooms.get(boundRoomCode)) || rc !== boundRoomCode) return;
     socket.to(rc).emit('webrtc_peer_left', { socketId: socket.id });
   });
 
   socket.on('webrtc_mute_state', ({ roomCode: rc, micOn, camOn }) => {
+    if (!getBoundPlayer(rooms.get(boundRoomCode)) || rc !== boundRoomCode) return;
     socket.to(rc).emit('webrtc_peer_mute_state', { socketId: socket.id, micOn, camOn });
   });
 
   // 12. Host manually ends game
-  socket.on('end_game', ({ roomCode, playerId }, callback) => {
+  socket.on('end_game', ({ roomCode }, callback) => {
     const normalizedCode = (roomCode || boundRoomCode || '').toUpperCase().trim();
     const room = rooms.get(normalizedCode);
     if (!room) return callback && callback({ error: 'Room not found' });
 
-    const caller = room.players.find(p => (playerId && p.id === playerId) || p.socketId === socket.id || p.id === boundPlayerId);
+    const caller = getBoundPlayer(room);
     if (!caller || !caller.isHost) {
       return callback && callback({ error: 'Only the room host can end the game' });
     }
@@ -789,9 +939,11 @@ io.on('connection', (socket) => {
       const room = rooms.get(boundRoomCode);
       if (room) {
         const player = room.players.find(p => p.id === boundPlayerId);
-        if (player) {
+        if (player && player.socketId === socket.id) {
           player.connected = false;
           player.socketId = null;
+          promoteHost(room);
+          scheduleRoomCleanup(room);
           broadcastRoomState(room);
         }
       }

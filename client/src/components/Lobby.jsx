@@ -52,14 +52,14 @@ export function Lobby({
           </div>
           <h2 className="lobby-title">Game Lobby</h2>
           <p className="lobby-subtitle">
-            Gather 3 to 6 players to divide the deck equally and start playing!
+            Gather 3 to 6 players to deal the deck equally and start playing!
           </p>
         </div>
 
         {/* Room Code & Share Section */}
         <div className="room-code-banner">
           <div className="room-code-meta">
-            <span className="code-label">ROOM CODE:</span>
+            <span className="code-label">6-CHARACTER ROOM CODE:</span>
             <span className="code-value">{roomCode}</span>
           </div>
 

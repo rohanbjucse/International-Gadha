@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Card } from './Card';
-import { X, Utensils, Layers, ArrowUpDown } from 'lucide-react';
+import { X, Utensils } from 'lucide-react';
 
 export function EatenCardsModal({ isOpen, onClose, bank = [], playerName = 'Your' }) {
-  if (!isOpen) return null;
-
   const [filterSuit, setFilterSuit] = useState('ALL');
+
+  if (!isOpen) return null;
 
   const spadeCards = bank.filter(c => c.isSpade);
   const spadeScore = spadeCards.reduce((sum, c) => sum + c.rank, 0);

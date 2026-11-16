@@ -136,7 +136,7 @@ function shuffle(cards) {
  * 1. Single card on table has rank == targetRank
  * 2. Any pair of cards on table (c1, c2) has c1.effectiveRank + c2.effectiveRank == targetRank
  * 
- * Returns { isSafe: boolean, matches: Card[], singleMatches: Card[], pairMatches: Array<[Card, Card]> }
+ * Returns all cards involved in any direct or pair match.
  */
 function checkTableMatches(tableCards, playedCard, chosenJokerRank = null) {
   const effectiveRank = playedCard.isJoker ? (chosenJokerRank || playedCard.jokerSubstituteRank || 1) : playedCard.rank;
@@ -158,26 +158,17 @@ function checkTableMatches(tableCards, playedCard, chosenJokerRank = null) {
     }
   }
 
-  // 2. Disjoint pairs of cards that sum to effectiveRank
-  // We exclude cards already matched in singleMatches
-  const availableForPairs = tableCards.filter(c => !matchedCardIds.has(c.id));
-  const usedInPairs = new Set();
+  // Capture the union of every pair whose ranks sum to the played rank.
+  for (let i = 0; i < tableCards.length; i++) {
+    const v1 = getCardVal(tableCards[i]);
 
-  for (let i = 0; i < availableForPairs.length; i++) {
-    if (usedInPairs.has(availableForPairs[i].id)) continue;
-    const v1 = getCardVal(availableForPairs[i]);
-
-    for (let j = i + 1; j < availableForPairs.length; j++) {
-      if (usedInPairs.has(availableForPairs[j].id)) continue;
-      const v2 = getCardVal(availableForPairs[j]);
+    for (let j = i + 1; j < tableCards.length; j++) {
+      const v2 = getCardVal(tableCards[j]);
 
       if (v1 + v2 === effectiveRank) {
-        pairMatches.push([availableForPairs[i], availableForPairs[j]]);
-        usedInPairs.add(availableForPairs[i].id);
-        usedInPairs.add(availableForPairs[j].id);
-        matchedCardIds.add(availableForPairs[i].id);
-        matchedCardIds.add(availableForPairs[j].id);
-        break; // pair found for availableForPairs[i]
+        pairMatches.push([tableCards[i], tableCards[j]]);
+        matchedCardIds.add(tableCards[i].id);
+        matchedCardIds.add(tableCards[j].id);
       }
     }
   }
@@ -206,6 +197,10 @@ function calculateGadhaPoints(cards) {
  */
 function getGadhaCards(cards) {
   return cards.filter(c => c.isSpade);
+}
+
+function isValidJokerRank(rank) {
+  return Number.isInteger(rank) && rank >= 1 && rank <= 13;
 }
 
 /**
@@ -350,6 +345,7 @@ module.exports = {
   checkTableMatches,
   calculateGadhaPoints,
   getGadhaCards,
+  isValidJokerRank,
   analyzeHandSafety,
   chooseBotMove
 };

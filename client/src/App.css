@@ -112,6 +112,22 @@
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+.status-notification {
+  position: fixed;
+  top: 4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  max-width: min(90vw, 36rem);
+  padding: 0.65rem 1rem;
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  border-radius: 0.75rem;
+  background: rgba(4, 18, 13, 0.96);
+  color: #fef08a;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
 .nav-btn-icon {
   display: flex;
   align-items: center;
@@ -1156,6 +1172,7 @@
   transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s;
   user-select: none;
   overflow: hidden;
+  appearance: none;
 }
 
 .size-sm {
@@ -1229,16 +1246,17 @@
 
 .safety-pill {
   position: absolute;
-  bottom: -10px;
+  bottom: 3px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.62rem;
+  font-size: 0.55rem;
   font-weight: 800;
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 9999px;
   white-space: nowrap;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
   z-index: 10;
+  pointer-events: none;
 }
 
 .pill-safe {
@@ -2243,6 +2261,12 @@
   .size-lg .center-suit-symbol {
     font-size: 1rem;
     line-height: 1;
+  }
+
+  .size-lg .safety-pill {
+    font-size: 0.42rem;
+    padding: 1px 2px;
+    bottom: 2px;
   }
 
   .size-lg .court-label {

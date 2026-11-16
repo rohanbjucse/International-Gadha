@@ -34,9 +34,9 @@ At each turn, a player plays 1 card face-up onto the center table:
    - 👉 The card is **SAFE** and stays on the table. Turn passes to the next player.
 
 2. **EATEN (Capture!):**
-   - If the played card matches any card on the table, **OR**
+   - If the played card matches one or more ranks on the table, **OR**
    - Equals the sum of any two cards on the table:
-   - 👉 The player **eats** (picks up) all the matched table cards **plus** their thrown card!
+   - 👉 The player **eats** all matching-rank cards, every card participating in every matching pair (including overlapping pairs), and their thrown card!
    - All eaten cards go into that player's **Bank**.
 
 #### Real Example (from game rules):
@@ -60,6 +60,8 @@ At each turn, a player plays 1 card face-up onto the center table:
 
 ### 5. Crown of the "International Gadha"
 - When all cards from hands are exhausted, each player's bank is tallied.
+- Any cards still on the table at that point are unscored.
+- If the host ends the game early, only cards already in players' banks count; cards left in hands or on the table are ignored.
 - The player with the **HIGHEST Gadha points** is officially crowned the **INTERNATIONAL GADHA 🫏👑**!
 - The player with the lowest score is the Winner 🏆.
 
@@ -69,7 +71,7 @@ At each turn, a player plays 1 card face-up onto the center table:
 
 - **Multiplayer Server:** Node.js + Express + Socket.IO.
 - **Client:** React 19 + Vite + Lucide Icons + Canvas Confetti.
-- **6-Digit Alphanumeric Room Codes:** Easy to copy and share (`?room=XYZ123`).
+- **6-Character Alphanumeric Room Codes:** Easy to copy and share (`?room=ABC123`).
 - **AI Bot Integration:** Host can add bots to test or play solo or with fewer friends.
 - **Card Sorting & Arrangement:**
   - Sort by **Rank (A to K)**
@@ -78,8 +80,9 @@ At each turn, a player plays 1 card face-up onto the center table:
   - Manual card reordering with step buttons
 - **Strategy Radar:** Real-time hints showing which cards in your hand are SAFE vs. which cards will eat and how many Gadha points are at risk.
 - **Persistent Sessions:**
-  - Browser refresh, back button, or network drops do **not** kick you out of the game!
+  - Browser refresh, back button, or temporary network drops do **not** remove your seat while the game server remains running.
   - `sessionToken` + `playerId` restore your exact seat, hand, and turn instantly.
+  - Rooms are currently held in server memory and do not survive a server restart.
 - **Web Audio Sound Synthesizer:** Built-in crisp card snaps, safe chimes, danger alarms, victory fanfares, and hilarious donkey "Hee-Haw" sounds without external asset dependencies.
 - **Responsive Mobile & Desktop Design:** Luxurious casino-felt table, fanned hand, and card animations.
 
@@ -98,6 +101,9 @@ Open your browser and navigate to:
 ```
 http://localhost:3001
 ```
+
+### Tests
+Run `npm test` for deterministic game-engine and socket-level regression tests. The socket tests start and stop their own temporary server.
 
 ### Development Mode (with hot-reload)
 To run client and server independently during development:

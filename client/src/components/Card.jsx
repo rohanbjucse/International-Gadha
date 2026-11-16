@@ -4,6 +4,7 @@ export function Card({
   card,
   isPlayable = false,
   isSelected = false,
+  safety = null,
   onClick,
   size = 'md', // 'sm', 'md', 'lg'
   isFaceDown = false,
@@ -42,10 +43,23 @@ export function Card({
   // Corner display values
   const cornerRank = isJoker ? (subRankLabel || 'JK') : card.label;
   const cornerSuit = isJoker ? '🃏' : card.symbol;
+  const CardElement = isPlayable ? 'button' : 'div';
+  const safetyLabel = safety
+    ? safety.isSafe
+      ? 'SAFE'
+      : `EAT ${safety.riskPoints}♠`
+    : null;
+  const safetyDescription = safety
+    ? safety.isSafe
+      ? 'safe'
+      : `will eat ${safety.riskPoints} Gadha points`
+    : '';
 
   return (
-    <div
+    <CardElement
+      type={isPlayable ? 'button' : undefined}
       onClick={isPlayable ? onClick : undefined}
+      aria-label={isPlayable ? `${card.name}${safetyDescription ? `, ${safetyDescription}` : ''}` : undefined}
       className={`card-base size-${size} ${isPlayable ? 'cursor-pointer hover-lift' : ''} ${
         isSelected ? 'card-selected' : ''
       } ${isJoker ? 'card-joker' : ''}`}
@@ -88,6 +102,11 @@ export function Card({
         <span className="corner-rank">{cornerRank}</span>
         <span className="corner-suit">{cornerSuit}</span>
       </div>
-    </div>
+      {isPlayable && safetyLabel && (
+        <div className={`safety-pill ${safety.isSafe ? 'pill-safe' : safety.riskPoints > 0 ? 'pill-danger' : 'pill-warning'}`}>
+          {safetyLabel}
+        </div>
+      )}
+    </CardElement>
   );
 }

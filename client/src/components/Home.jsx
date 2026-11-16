@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Play, LogIn, PlusCircle, BookOpen, Volume2, VolumeX, Sparkles, RotateCcw } from 'lucide-react';
+import React, { useState } from 'react';
+import { LogIn, PlusCircle, BookOpen, Volume2, VolumeX, Sparkles, RotateCcw } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
 const AVATARS = ['🤠', '😎', '🦊', '🦁', '🐼', '🥷', '🧙‍♂️', '👑', '🃏', '🚀'];
@@ -21,13 +21,6 @@ export function Home({
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (defaultRoomCode) {
-      setJoinCode(defaultRoomCode);
-      setActiveTab('join');
-    }
-  }, [defaultRoomCode]);
-
   function handleNameChange(val) {
     setName(val);
     localStorage.setItem('gadha_player_name', val);
@@ -38,7 +31,8 @@ export function Home({
     localStorage.setItem('gadha_player_avatar', av);
   }
 
-  function handleCreate() {
+  async function handleCreate() {
+    if (isSubmitting) return;
     if (!name.trim()) {
       setErrorMsg('Please enter your name first!');
       return;
@@ -49,17 +43,20 @@ export function Home({
     }
     setErrorMsg('');
     setIsSubmitting(true);
-    onCreateRoom(name.trim(), avatar);
-    setTimeout(() => setIsSubmitting(false), 3000);
+    const result = await onCreateRoom(name.trim(), avatar);
+    if (result?.error) setErrorMsg(result.error);
+    setIsSubmitting(false);
   }
 
-  function handleJoin() {
+  async function handleJoin() {
+    if (isSubmitting) return;
     if (!name.trim()) {
       setErrorMsg('Please enter your name first!');
       return;
     }
-    if (!joinCode.trim()) {
-      setErrorMsg('Please enter a 6-digit room code!');
+    const normalizedCode = joinCode.trim().toUpperCase();
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(normalizedCode)) {
+      setErrorMsg('Enter a valid 6-character room code.');
       return;
     }
     if (!isConnected) {
@@ -68,8 +65,9 @@ export function Home({
     }
     setErrorMsg('');
     setIsSubmitting(true);
-    onJoinRoom(joinCode.trim().toUpperCase(), name.trim(), avatar);
-    setTimeout(() => setIsSubmitting(false), 3000);
+    const result = await onJoinRoom(normalizedCode, name.trim(), avatar);
+    if (result?.error) setErrorMsg(result.error);
+    setIsSubmitting(false);
   }
 
   function toggleSound() {
@@ -180,7 +178,7 @@ export function Home({
           {activeTab === 'create' ? (
             <div className="create-tab-view animate-fade-in">
               <p className="tab-info-text">
-                Start a fresh room, get a 6-digit room code to share with friends, or play against AI bots!
+                Start a room, share its 6-character code with friends, or play against AI bots!
               </p>
               <button
                 onClick={handleCreate}
@@ -193,12 +191,12 @@ export function Home({
             </div>
           ) : (
             <div className="join-tab-view animate-fade-in">
-              <label className="input-label">Enter 6-Digit Room Code</label>
+              <label className="input-label">Enter 6-Character Room Code</label>
               <input
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="e.g. GADHA7"
+                placeholder="e.g. ABC123"
                 maxLength={6}
                 className="input-text font-mono text-center tracking-widest text-xl uppercase"
               />
@@ -222,7 +220,7 @@ export function Home({
           </div>
           <div className="quick-rule-item">
             <span className="quick-rule-dot text-amber-400">🍽️</span>
-            <span>Match single card or sum of 2 cards to eat</span>
+            <span>Match a rank or any pair sum to eat all matches</span>
           </div>
           <div className="quick-rule-item">
             <span className="quick-rule-dot text-purple-400">🃏</span>

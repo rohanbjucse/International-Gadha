@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, BookOpen, ShieldCheck, Utensils, AlertTriangle, Sparkles } from 'lucide-react';
+import { X, BookOpen, ShieldCheck, Utensils, AlertTriangle } from 'lucide-react';
 
 export function RulesModal({ isOpen, onClose }) {
   if (!isOpen) return null;
@@ -72,8 +72,8 @@ export function RulesModal({ isOpen, onClose }) {
                   <Utensils size={16} /> EATEN (Capture!)
                 </div>
                 <p className="text-xs text-slate-300 mt-1">
-                  If your card matches a single card on the table OR equals the sum of two cards on the table:
-                  <strong>You MUST pick up the matched table cards + your played card</strong> into your Bank!
+                  If your card matches a rank on the table OR equals the sum of any two table cards:
+                  <strong> Pick up all matching-rank cards, every card in every matching pair (even if pairs overlap), and your played card</strong> into your Bank!
                 </p>
               </div>
             </div>
@@ -125,7 +125,8 @@ export function RulesModal({ isOpen, onClose }) {
             <p>
               At the end of the round, each player tallies their Spades face values.
               The player with the <strong>HIGHEST Gadha points</strong> is crowned the <strong>INTERNATIONAL GADHA 🫏</strong>!
-              The player with the lowest score wins!
+              The player with the lowest score wins. Cards left on the table when all hands are empty are not scored.
+              If the host ends the game early, only cards already in players' banks count; cards left in hands or on the table are ignored.
             </p>
           </div>
         </div>

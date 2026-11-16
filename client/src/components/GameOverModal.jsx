@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Trophy, RefreshCw, LogOut, ShieldCheck, Flame } from 'lucide-react';
+import { Trophy, RefreshCw, LogOut } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
 export function GameOverModal({
@@ -10,13 +10,15 @@ export function GameOverModal({
   onRestart,
   onLeave
 }) {
-  if (!results) return null;
-
-  const { standings, internationalGadhas, winners } = results;
+  const standings = results?.standings || [];
+  const internationalGadhas = results?.internationalGadhas || [];
+  const winners = results?.winners || [];
   const isMeGadha = internationalGadhas.some(g => g.playerId === currentPlayerId);
   const isMeWinner = winners.some(w => w.playerId === currentPlayerId);
+  const finishedAt = results?.finishedAt;
 
   useEffect(() => {
+    if (!finishedAt) return;
     if (isMeWinner) {
       sounds.playVictoryFanfare();
       confetti({
@@ -27,7 +29,9 @@ export function GameOverModal({
     } else {
       sounds.playGadhaBray();
     }
-  }, [isMeWinner]);
+  }, [finishedAt, isMeWinner]);
+
+  if (!results) return null;
 
   return (
     <div className="modal-overlay animate-fade-in">

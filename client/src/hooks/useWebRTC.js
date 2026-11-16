@@ -59,11 +59,11 @@ export function useWebRTC({ socket, roomCode, enabled }) {
             noiseSuppression: true
           }
         });
-      } catch (err1) {
+      } catch {
         // Strategy 2: Generic video + audio without specific constraints
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        } catch (err2) {
+        } catch {
           // Strategy 3: Audio only fallback (if camera is in use or blocked)
           try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });

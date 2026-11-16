@@ -8,7 +8,7 @@
     "build": "cd client && npm install && npm run build",
     "dev:server": "node server/server.js",
     "dev:client": "cd client && npm run dev",
-    "test": "node test_engine.js"
+    "test": "node test_engine.js && node test_server.js"
   },
   "keywords": ["card-game", "multiplayer", "socket-io", "international-gadha"],
   "author": "",

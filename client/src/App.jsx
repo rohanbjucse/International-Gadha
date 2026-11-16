@@ -10,7 +10,6 @@ import { GameOverModal } from './components/GameOverModal';
 import { RulesModal } from './components/RulesModal';
 import { EatenCardsModal } from './components/EatenCardsModal';
 import { ChatModal } from './components/ChatModal';
-import { VideoTile } from './components/VideoTile';
 import { useWebRTC } from './hooks/useWebRTC';
 import { sounds } from './utils/sound';
 import {
@@ -20,8 +19,6 @@ import {
   LogOut,
   Wifi,
   WifiOff,
-  Mic,
-  MicOff,
   Video,
   VideoOff,
   MessageSquare,
@@ -54,6 +51,7 @@ export default function App() {
   const [videoEnabled, setVideoEnabled] = useState(false);
 
   const lastActionTimestampRef = useRef(null);
+  const notificationTimeoutRef = useRef(null);
 
   // WebRTC video/audio chat (available during lobby or gameplay)
   const isInRoom = !!gameState;
@@ -66,12 +64,28 @@ export default function App() {
     toggleMic,
     toggleCam,
     permissionError,
-    isInitializing
   } = useWebRTC({
     socket,
     roomCode,
     enabled: videoEnabled && isInRoom
   });
+
+  function clearLocalSession() {
+    setGameState(null);
+    setRoomCode(null);
+    setMyPlayerId(null);
+    setSessionToken(null);
+    localStorage.removeItem('gadha_room_code');
+    localStorage.removeItem('gadha_player_id');
+    localStorage.removeItem('gadha_session_token');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  function showNotification(message) {
+    setStatusNotification(message);
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    notificationTimeoutRef.current = setTimeout(() => setStatusNotification(''), 4000);
+  }
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -88,17 +102,24 @@ export default function App() {
       // Check URL query parameters or localStorage for auto-reconnect
       const params = new URLSearchParams(window.location.search);
       const urlRoomCode = params.get('room');
-      const savedRoom = urlRoomCode || localStorage.getItem('gadha_room_code');
+      const storedRoom = localStorage.getItem('gadha_room_code');
+      const savedRoom = urlRoomCode && urlRoomCode !== storedRoom
+        ? null
+        : urlRoomCode || storedRoom;
       const savedPid = localStorage.getItem('gadha_player_id');
       const savedToken = localStorage.getItem('gadha_session_token');
 
       if (savedRoom && savedPid && savedToken) {
-        s.emit('reconnect_session', {
+        s.timeout(10000).emit('reconnect_session', {
           roomCode: savedRoom,
           playerId: savedPid,
           sessionToken: savedToken
-        }, (res) => {
-          if (res && res.success) {
+        }, (timeoutError, res) => {
+          if (timeoutError) {
+            showNotification('Unable to reconnect to the saved game yet. Your session is still saved.');
+            return;
+          }
+          if (!timeoutError && res && res.success) {
             setGameState(res.gameState);
             setMyPlayerId(res.playerId);
             setRoomCode(res.roomCode);
@@ -162,7 +183,8 @@ export default function App() {
 
     s.on('notification', ({ message }) => {
       setStatusNotification(message);
-      setTimeout(() => setStatusNotification(''), 4000);
+      if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+      notificationTimeoutRef.current = setTimeout(() => setStatusNotification(''), 4000);
     });
 
     setSocket(s);
@@ -185,92 +207,77 @@ export default function App() {
     window.history.replaceState({ path: newUrl }, '', newUrl);
   }
 
-  function clearLocalSession() {
-    setGameState(null);
-    setRoomCode(null);
-    setMyPlayerId(null);
-    setSessionToken(null);
-    localStorage.removeItem('gadha_room_code');
-    localStorage.removeItem('gadha_player_id');
-    localStorage.removeItem('gadha_session_token');
+  function emitRequest(eventName, payload) {
+    return new Promise((resolve) => {
+      if (!socket || !socket.connected) {
+        resolve({ error: 'Not connected to the game server. Please try again.' });
+        return;
+      }
 
-    // Clean URL
-    window.history.replaceState({}, '', window.location.pathname);
+      socket.timeout(10000).emit(eventName, payload, (timeoutError, response) => {
+        if (timeoutError) {
+          resolve({ error: 'The server did not respond. Please try again.' });
+          return;
+        }
+        resolve(response || { error: 'The server returned an empty response.' });
+      });
+    });
   }
 
   // Create room
-  function handleCreateRoom(playerName, avatar) {
-    if (!socket) return;
-    socket.emit('create_room', { playerName, avatar }, (res) => {
-      if (res && res.success) {
-        saveSession(res.roomCode, res.playerId, res.sessionToken);
-        setGameState(res.gameState);
-        if (Array.isArray(res.gameState?.chatHistory)) {
-          setChatMessages(res.gameState.chatHistory);
-        }
-      } else if (res && res.error) {
-        alert(res.error);
-      }
-    });
+  async function handleCreateRoom(playerName, avatar) {
+    const res = await emitRequest('create_room', { playerName, avatar });
+    if (res.success) {
+      saveSession(res.roomCode, res.playerId, res.sessionToken);
+      setGameState(res.gameState);
+      setChatMessages(res.gameState?.chatHistory || []);
+    }
+    return res;
   }
 
   // Join room
-  function handleJoinRoom(code, playerName, avatar) {
-    if (!socket) return;
-    socket.emit('join_room', { roomCode: code, playerName, avatar }, (res) => {
-      if (res && res.success) {
-        saveSession(res.roomCode, res.playerId, res.sessionToken);
-        setGameState(res.gameState);
-        if (Array.isArray(res.gameState?.chatHistory)) {
-          setChatMessages(res.gameState.chatHistory);
-        }
-      } else if (res && res.error) {
-        alert(res.error);
-      }
-    });
+  async function handleJoinRoom(code, playerName, avatar) {
+    const res = await emitRequest('join_room', { roomCode: code, playerName, avatar });
+    if (res.success) {
+      saveSession(res.roomCode, res.playerId, res.sessionToken);
+      setGameState(res.gameState);
+      setChatMessages(res.gameState?.chatHistory || []);
+    }
+    return res;
   }
 
   // Resume ongoing session
-  function handleResumeSession(session) {
-    if (!socket) return;
-    socket.emit('reconnect_session', {
+  async function handleResumeSession(session) {
+    const res = await emitRequest('reconnect_session', {
       roomCode: session.roomCode,
       playerId: session.playerId,
       sessionToken: session.sessionToken
-    }, (res) => {
-      if (res && res.success) {
-        setGameState(res.gameState);
-        setMyPlayerId(res.playerId);
-        setRoomCode(res.roomCode);
-      } else {
-        alert(res?.error || 'Unable to resume session.');
-        clearLocalSession();
-      }
     });
+    if (res.success) {
+      saveSession(res.roomCode, res.playerId, session.sessionToken);
+      setGameState(res.gameState);
+      setChatMessages(res.gameState?.chatHistory || []);
+    } else {
+      showNotification(res.error || 'Unable to resume session.');
+    }
   }
 
   // Add Bot
-  function handleAddBot() {
-    if (!socket || !roomCode) return;
-    socket.emit('add_bot', { roomCode }, (res) => {
-      if (res && res.error) alert(res.error);
-    });
+  async function handleAddBot() {
+    const res = await emitRequest('add_bot', { roomCode });
+    if (res.error) showNotification(res.error);
   }
 
   // Remove Player/Bot
-  function handleRemovePlayer(targetPlayerId) {
-    if (!socket || !roomCode) return;
-    socket.emit('remove_player', { roomCode, targetPlayerId }, (res) => {
-      if (res && res.error) alert(res.error);
-    });
+  async function handleRemovePlayer(targetPlayerId) {
+    const res = await emitRequest('remove_player', { roomCode, targetPlayerId });
+    if (res.error) showNotification(res.error);
   }
 
   // Start Game
-  function handleStartGame() {
-    if (!socket || !roomCode) return;
-    socket.emit('start_game', { roomCode }, (res) => {
-      if (res && res.error) alert(res.error);
-    });
+  async function handleStartGame() {
+    const res = await emitRequest('start_game', { roomCode });
+    if (res.error) showNotification(res.error);
   }
 
   // Play a card
@@ -285,16 +292,11 @@ export default function App() {
     }
 
     sounds.playCardSnap();
-    socket.emit('play_card', {
+    emitRequest('play_card', {
       roomCode: activeRoom,
-      playerId: myPlayerId,
       cardId: card.id,
       chosenJokerRank: null
-    }, (res) => {
-      if (res && res.error) {
-        alert(res.error);
-      }
-    });
+    }).then(res => { if (res.error) showNotification(res.error); });
   }
 
   // Confirm Joker rank selection
@@ -304,15 +306,12 @@ export default function App() {
     setIsJokerModalOpen(false);
 
     sounds.playCardSnap();
-    socket.emit('play_card', {
+    emitRequest('play_card', {
       roomCode: activeRoom,
-      playerId: myPlayerId,
       cardId: pendingJokerCard.id,
       chosenJokerRank: rank
-    }, (res) => {
-      if (res && res.error) {
-        alert(res.error);
-      }
+    }).then(res => {
+      if (res.error) showNotification(res.error);
       setPendingJokerCard(null);
     });
   }
@@ -321,41 +320,60 @@ export default function App() {
   function handleReorderHand(newHandOrder) {
     const activeRoom = roomCode || gameState?.roomCode;
     if (!socket || !activeRoom) return;
-    socket.emit('sort_hand', { roomCode: activeRoom, playerId: myPlayerId, newHandOrder });
+    emitRequest('sort_hand', { roomCode: activeRoom, newHandOrder })
+      .then(res => { if (res.error) showNotification(res.error); });
   }
 
   // Restart Game / Play Again
-  function handleRestartGame() {
+  async function handleRestartGame() {
     const activeRoom = roomCode || gameState?.roomCode;
-    if (!socket || !activeRoom) return;
-    socket.emit('restart_game', { roomCode: activeRoom, playerId: myPlayerId }, (res) => {
-      if (res && res.error) alert(res.error);
-    });
+    if (!activeRoom) return;
+    const res = await emitRequest('restart_game', { roomCode: activeRoom });
+    if (res.error) showNotification(res.error);
   }
 
   // Leave Game
-  function handleLeaveGame() {
+  async function handleLeaveGame() {
     if (window.confirm('Are you sure you want to leave this game?')) {
-      clearLocalSession();
+      const activeRoom = roomCode || gameState?.roomCode;
+      if (!activeRoom) {
+        clearLocalSession();
+        return;
+      }
+
+      const res = await emitRequest('leave_room', { roomCode: activeRoom });
+      if (res.error) {
+        showNotification(res.error);
+        return;
+      }
+
+      if (res.removed) {
+        clearLocalSession();
+      } else {
+        setGameState(null);
+        setIsChatOpen(false);
+        setVideoEnabled(false);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }
   }
 
   // Host: End Game
-  function handleEndGame() {
+  async function handleEndGame() {
     const activeRoom = roomCode || gameState?.roomCode;
-    if (!socket || !activeRoom) return;
-    if (window.confirm('Are you sure you want to end this game now? Current scores will decide the International Gadha!')) {
-      socket.emit('end_game', { roomCode: activeRoom, playerId: myPlayerId }, (res) => {
-        if (res && res.error) alert(res.error);
-      });
+    if (!activeRoom) return;
+    if (window.confirm("End the game now? Only cards already in players' banks will count. Cards still in hands or on the table will be ignored.")) {
+      const res = await emitRequest('end_game', { roomCode: activeRoom });
+      if (res.error) showNotification(res.error);
     }
   }
 
   // Send in-game chat message or reaction
   function handleSendMessage({ message, reaction }) {
     const activeRoom = roomCode || gameState?.roomCode;
-    if (!socket || !activeRoom) return;
-    socket.emit('send_chat', { roomCode: activeRoom, playerId: myPlayerId, message, reaction });
+    if (!activeRoom) return;
+    emitRequest('send_chat', { roomCode: activeRoom, message, reaction })
+      .then(res => { if (res.error) showNotification(res.error); });
   }
 
   function toggleSound() {
@@ -481,10 +499,17 @@ export default function App() {
         </div>
       </header>
 
+      {statusNotification && (
+        <div className="status-notification" role="status" aria-live="polite">
+          {statusNotification}
+        </div>
+      )}
+
       {/* Main View Area */}
       <main className="game-app-body">
         {!gameState ? (
           <Home
+            key={urlRoomCode}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
             onResumeSession={handleResumeSession}
@@ -539,6 +564,7 @@ export default function App() {
             <PlayerHand
               hand={me?.hand || []}
               bank={me?.bank || []}
+              handSafety={me?.handSafety || []}
               isMyTurn={isMyTurn}
               onPlayCard={handlePlayCard}
               onReorderHand={handleReorderHand}
@@ -599,7 +625,7 @@ export default function App() {
           currentPlayerId={myPlayerId}
           isHost={isHost}
           onRestart={handleRestartGame}
-          onLeave={clearLocalSession}
+          onLeave={handleLeaveGame}
         />
       )}
 

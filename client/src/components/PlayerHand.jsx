@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Card } from './Card';
 import {
   ArrowUpDown,
@@ -12,12 +12,13 @@ import {
 export function PlayerHand({
   hand = [],
   bank = [],
+  handSafety = [],
   isMyTurn = false,
   onPlayCard,
   onReorderHand,
   onOpenEatenCards
 }) {
-  const [selectedCardId, setSelectedCardId] = useState(null);
+  const safetyByCardId = new Map(handSafety.map(item => [item.cardId, item]));
 
   // Sorting helpers
   function sortByRank() {
@@ -145,7 +146,7 @@ export function PlayerHand({
                   card={card}
                   size="lg"
                   isPlayable={isMyTurn}
-                  isSelected={selectedCardId === card.id}
+                  safety={safetyByCardId.get(card.id)}
                   onClick={() => handleCardClick(card)}
                 />
               </div>

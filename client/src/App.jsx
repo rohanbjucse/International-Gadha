@@ -28,6 +28,7 @@ import {
 
 // Connect to backend server (supports production domains, direct port 3001, and Vite dev port 5173)
 const SERVER_URL = import.meta.env.VITE_SERVER_URL?.trim()
+  || window.__GADHA_SERVER_URL__?.trim()
   || (window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin);
 
 export default function App() {

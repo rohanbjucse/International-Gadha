@@ -23,19 +23,19 @@ Main UI pieces: `Home` and `Lobby` (entry/waiting room), `Opponents` and `VideoT
 
 ## Hosting in plain language
 
-- **Vercel is your current host.** It is suitable for the website, but its separate server instances do not share this app’s in-memory room `Map`. A request can reach an instance that never saw the room, and a restart loses rooms.
-- **Render is another hosting company, not a database.** The repo’s [`render.yaml`](./render.yaml) describes an alternate free Node server. Free services can sleep, and this app’s rooms would still disappear on restart. The default Render URL was unavailable at the last check.
-- **Free rollout chosen:** keep the website on Vercel and deploy the Socket.IO server using the Render blueprint. The `international-gadha-free` Blueprint is now created from this repository on Render’s free plan. Its first build exposed a production-install issue: npm omitted Vite, a build-time dependency. The root build script now explicitly includes client dev dependencies; push this fix and sync/redeploy the Blueprint. Then set Vercel’s build variable `VITE_SERVER_URL` to the Render service’s public HTTPS URL and redeploy Vercel. The client supports this variable; it does not create or deploy the backend by itself.
+- **Vercel hosts the web app in a container.** Each container has its own in-memory room `Map`, so it is not the shared multiplayer server. The client gets the game-server URL from `/api/config.js` at runtime.
+- **Render hosts the shared Socket.IO server.** The `international-gadha-free` Blueprint is deployed from this repository on Render’s free plan at `https://international-gadha.onrender.com`.
+- **Free rollout chosen:** keep the website on Vercel and use the Render service for shared rooms. Set Vercel’s project variable `VITE_SERVER_URL` to the Render HTTPS URL; the server exposes it to the client at runtime, including Dockerfile deployments. The free server can sleep and rooms disappear on restart or deploy.
 - **Free-plan limit:** Render may sleep when idle, and this app has no database, so rooms can disappear after sleep, restart, or deploy. Players on different devices can join the same live room while the server is awake; keeping rooms through restarts needs shared persistent storage.
 
 ## What remains
 
-1. Push the build fix, redeploy the Render Blueprint, then set `VITE_SERVER_URL` in Vercel and redeploy.
+1. Push the runtime-config change and let Vercel redeploy; verify the client connects to Render.
 2. Replace the in-memory room store with shared durable storage if rooms must survive restarts and multiple instances.
 3. Add a TURN relay for reliable video on restrictive mobile/carrier networks; the current WebRTC setup has STUN only.
 4. Test the deployed game on desktop and mobile. Camera/mic preferences are per browser/device, not synced between devices.
 
-Recent reliability, media, and board-layout changes in the working tree are not deployed yet. After the backend is chosen, run `npm test`, `npm --prefix client run build`, and deploy both the server and Vercel client.
+Run `npm test` and `npm run build` before deploying code changes to Render and Vercel.
 
 ## Run locally
 

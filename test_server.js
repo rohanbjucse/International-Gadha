@@ -267,7 +267,8 @@ async function run() {
       ...process.env,
       PORT: String(port),
       BOT_TURN_DELAY_MS: '1',
-      TURN_RESOLUTION_FALLBACK_MS: '1000'
+      TURN_RESOLUTION_FALLBACK_MS: '1000',
+      VITE_SERVER_URL: 'https://test-game-server.example'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -276,6 +277,14 @@ async function run() {
 
   try {
     await waitForServer(url);
+
+    const configResponse = await fetch(`${url}/api/config.js`);
+    assert.equal(configResponse.status, 200, 'runtime client config is served');
+    assert.equal(
+      await configResponse.text(),
+      'window.__GADHA_SERVER_URL__ = "https://test-game-server.example";',
+      'runtime client config exposes the configured game server URL'
+    );
 
     const departingHost = await connectSocket(url);
     const departingRoom = await request(departingHost, 'create_room', { playerName: 'Leaving Host' });

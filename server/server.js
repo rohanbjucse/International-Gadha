@@ -1050,6 +1050,13 @@ io.on('connection', (socket) => {
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
 
+app.get('/api/config.js', (req, res) => {
+  const serverUrl = process.env.VITE_SERVER_URL?.trim() || '';
+  res.type('application/javascript').send(
+    `window.__GADHA_SERVER_URL__ = ${JSON.stringify(serverUrl)};`
+  );
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', activeRooms: rooms.size, timestamp: Date.now() });
 });

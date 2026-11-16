@@ -109,7 +109,7 @@ Run `npm test` for deterministic game-engine and socket-level regression tests. 
 
 The Render deployment includes `/api/health` as its service health check. The checked-in Render service uses the free plan, which can sleep; active rooms are in memory, so sleep, restart, or deploy ends those rooms even when clients reconnect automatically. Use an always-on server and shared persistent storage to avoid these production limits.
 
-When the frontend is hosted separately (for example, on Vercel), set the build-time `VITE_SERVER_URL` environment variable to the public HTTPS URL of the Node/Socket.IO service. Do not point Socket.IO at a serverless frontend deployment: each instance has separate in-memory rooms. The game server must be deployed as a persistent service; use shared persistent storage if rooms must survive restarts.
+When the frontend is hosted separately (for example, on Vercel), set the project environment variable `VITE_SERVER_URL` to the public HTTPS URL of the Node/Socket.IO service. The server exposes it to the browser through `/api/config.js` at runtime, which also works with the Vercel Dockerfile deployment. Do not point Socket.IO at the frontend container: each instance has separate in-memory rooms. The game server must be deployed as a persistent service; use shared persistent storage if rooms must survive restarts.
 
 Video-chat preferences are saved per browser/device; each device still requires its own camera and microphone permission. STUN-only WebRTC may not connect through restrictive carrier or corporate networks, which require a TURN relay.
 

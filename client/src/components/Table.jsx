@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Card } from './Card';
-import { Sparkles, Utensils } from 'lucide-react';
 
 function slotColumn(index, columnCount) {
   const offset = index % columnCount;
@@ -73,13 +72,11 @@ function TableActionAnimation({
     return (
       <div
         className="table-identify-pause"
-        aria-live="polite"
+        aria-hidden="true"
         onAnimationEnd={event => {
           if (event.target === event.currentTarget) onPhaseChange('gather');
         }}
-      >
-        {eatenCards.length} matched cards
-      </div>
+      />
     );
   }
 
@@ -93,9 +90,6 @@ function TableActionAnimation({
         if (event.target === event.currentTarget) onDone();
       }}
     >
-      <span className="capture-flight-caption">
-        {action.playerName} took {eatenCards.length} cards · +{action.pointsGained || 0} Spade points
-      </span>
       {eatenCards.map((card, index) => {
         const source = sourcePositions.get(card.id) || { x: 0, y: 0 };
         return (
@@ -126,7 +120,6 @@ export function Table({
   animationAction,
   onActionAnimationComplete
 }) {
-  const [dismissedToastKey, setDismissedToastKey] = useState('');
   const [animationState, setAnimationState] = useState({ active: null, queuedCaptures: [] });
   const [animationPhase, setAnimationPhase] = useState('throw');
   const [completedAnimationKey, setCompletedAnimationKey] = useState('');
@@ -143,7 +136,6 @@ export function Table({
   const seenActionKeyRef = useRef(incomingActionKey);
   const motionAction = animationState.active;
   const animationKey = motionAction ? JSON.stringify(motionAction) : '';
-  const toastKey = lastAction ? JSON.stringify(lastAction) : '';
   const isAnimationActive = !!motionAction;
   const retainedCaptureActions = [animationState.active, ...animationState.queuedCaptures]
     .filter(action => action?.type === 'eat');
@@ -261,28 +253,7 @@ export function Table({
 
   return (
     <div className="table-container">
-      <div className="table-felt">
-        <div className="table-felt-watermark">
-          <span className="watermark-emoji">🫏</span>
-          <span className="watermark-text">INTERNATIONAL GADHA</span>
-        </div>
-
-        {toastKey && dismissedToastKey !== toastKey && (
-          <div
-            key={toastKey}
-            className={`action-toast-pill toast-lifecycle ${lastAction.type === 'eat' ? 'toast-eat' : 'toast-info'}`}
-            onAnimationEnd={() => setDismissedToastKey(toastKey)}
-            aria-hidden="true"
-          >
-            <div className="toast-icon">
-              {lastAction.type === 'eat'
-                ? <Utensils size={15} className="text-amber-300" />
-                : <Sparkles size={15} className="text-purple-300" />}
-            </div>
-            <span className="toast-text">{lastAction.message}</span>
-          </div>
-        )}
-
+      <div className="table-status-row">
         <div className={`turn-status-indicator ${isMyTurn ? 'turn-pulse-me' : ''}`}>
           {isTurnResolving ? (
             <span className="flex items-center gap-1.5 text-amber-200">
@@ -299,6 +270,28 @@ export function Table({
           ) : (
             <span>Preparing table...</span>
           )}
+        </div>
+
+        {lastAction && ['eat', 'safe'].includes(lastAction.type) && (
+          <div
+            className={`gameplay-action-banner action-${lastAction.type}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="gameplay-action-icon" aria-hidden="true">
+              {lastAction.type === 'eat' ? '🍽️' : '✨'}
+            </span>
+            <span className="gameplay-action-message">
+              {lastAction.message || (lastAction.type === 'eat' ? 'Cards captured.' : 'Card played safely.')}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="table-felt">
+        <div className="table-felt-watermark">
+          <span className="watermark-emoji">🫏</span>
+          <span className="watermark-text">INTERNATIONAL GADHA</span>
         </div>
 
         <div className="table-cards-surface" ref={tableSurfaceRef}>

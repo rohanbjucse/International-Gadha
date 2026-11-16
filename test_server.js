@@ -307,6 +307,10 @@ async function run() {
     const hostTracker = createStateTracker(hostSocket);
     const created = await request(hostSocket, 'create_room', { playerName: 'Host' });
     assert.equal(created.success, true);
+    assert.equal(created.gameState.yourPlayerId, created.playerId);
+    assert.equal(created.gameState.sessionToken, created.sessionToken);
+    const hostInitialState = await hostTracker.waitFor(state => state.yourPlayerId === created.playerId);
+    assert.equal(hostInitialState.sessionToken, created.sessionToken, 'room updates retain the host session credentials');
 
     const guestSocket = await connectSocket(url);
     const guestTracker = createStateTracker(guestSocket);
@@ -315,6 +319,9 @@ async function run() {
       playerName: 'Guest'
     });
     assert.equal(joined.success, true);
+    const guestInitialState = await guestTracker.waitFor(state => state.yourPlayerId === joined.playerId);
+    assert.equal(guestInitialState.sessionToken, joined.sessionToken, 'room updates retain the guest session credentials');
+    assert.notEqual(guestInitialState.sessionToken, created.sessionToken, 'each player only receives their own session credential');
 
     const deniedBot = await request(guestSocket, 'add_bot', { roomCode: created.roomCode });
     assert.match(deniedBot.error, /host/i, 'non-host cannot add bots');

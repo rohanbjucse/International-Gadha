@@ -932,16 +932,63 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 0.25rem;
   position: relative;
+}
+
+.table-status-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0 0.25rem 0.25rem;
+}
+
+.gameplay-action-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  max-width: min(600px, 100%);
+  padding: 0.25rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.gameplay-action-banner.action-eat {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(120, 53, 15, 0.72);
+}
+
+.gameplay-action-banner.action-safe {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(6, 78, 59, 0.72);
+}
+
+.gameplay-action-icon {
+  flex: 0 0 auto;
+}
+
+.gameplay-action-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-felt {
   width: 100%;
   max-width: 900px;
-  height: 100%;
+  height: auto;
+  flex: 1;
   max-height: 100%;
   min-height: 0;
   background: radial-gradient(circle at 50% 50%, #115e44 0%, #0d4a38 60%, #072e22 100%);
@@ -980,92 +1027,16 @@
   color: #ffffff;
 }
 
-/* Action Toast Pill (Auto-dismissing, Floating) */
-.action-toast-pill {
-  position: absolute;
-  top: 0.65rem;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.9rem;
-  border-radius: 9999px;
-  backdrop-filter: blur(12px);
-  z-index: 35;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(234, 179, 8, 0.25);
-  max-width: 90%;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.toast-eat {
-  background: rgba(180, 83, 9, 0.95);
-  border: 1px solid #f59e0b;
-  color: #ffffff;
-}
-
-.toast-safe {
-  background: rgba(6, 95, 70, 0.95);
-  border: 1px solid #10b981;
-  color: #ffffff;
-}
-
-.toast-info {
-  background: rgba(30, 41, 59, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #ffffff;
-}
-
-.toast-text {
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-@keyframes toast-in {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -24px) scale(0.85);
-  }
-  65% {
-    opacity: 1;
-    transform: translate(-50%, 3px) scale(1.03);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-}
-
-@keyframes toast-out {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -20px) scale(0.9);
-  }
-}
-
-.animate-toast-in {
-  animation: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-toast-out {
-  animation: toast-out 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 /* Turn Indicator */
 .turn-status-indicator {
-  position: absolute;
-  bottom: 0.5rem;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
   background: rgba(4, 20, 14, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 9999px;
   padding: 0.25rem 0.85rem;
   font-size: 0.75rem;
-  z-index: 25;
 }
 
 .turn-pulse-me {
@@ -2198,16 +2169,19 @@
     height: 54px;
   }
 
+  .table-status-row {
+    gap: 0.25rem;
+  }
+
   .turn-status-indicator {
-    bottom: 0.35rem;
     font-size: 0.7rem;
     padding: 0.2rem 0.65rem;
   }
 
-  .action-toast-pill {
-    top: 0.4rem;
-    padding: 0.25rem 0.75rem;
+  .gameplay-action-banner {
+    max-width: 100%;
     font-size: 0.72rem;
+    padding: 0.2rem 0.55rem;
   }
 
   /* Player Hand on mobile */
@@ -2939,32 +2913,12 @@
   animation: capture-flight-lifecycle 2.6s ease-out both;
 }
 
-.toast-lifecycle {
-  animation: toast-lifecycle 3s ease-out both;
-}
-
-.table-identify-pause,
-.capture-flight-caption {
-  position: absolute;
-  left: 50%;
-  padding: 0.35rem 0.7rem;
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  border-radius: 999px;
-  background: rgba(3, 20, 14, 0.9);
-  color: #fde68a;
-  font-size: 0.72rem;
-  font-weight: 700;
-  white-space: nowrap;
-  transform: translateX(-50%);
-}
-
 .table-identify-pause {
-  top: 0.5rem;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
   animation: table-identify-hold 0.82s linear both;
-}
-
-.capture-flight-caption {
-  top: 0.5rem;
 }
 
 .capture-flight-card {
@@ -3018,11 +2972,6 @@
 @keyframes capture-flight-lifecycle {
   0%, 90% { opacity: 1; }
   100% { opacity: 0; }
-}
-
-@keyframes toast-lifecycle {
-  0%, 100% { opacity: 0; transform: translate(-50%, -8px); }
-  8%, 78% { opacity: 1; transform: translate(-50%, 0); }
 }
 
 .lobby-layout {
@@ -3313,8 +3262,7 @@
   .table-identify-pause,
   .table-card-eating,
   .table-capture-flight,
-  .capture-flight-card,
-  .toast-lifecycle {
+  .capture-flight-card {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;
   }

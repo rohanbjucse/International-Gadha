@@ -27,9 +27,8 @@ import {
 } from 'lucide-react';
 
 // Connect to backend server (supports production domains, direct port 3001, and Vite dev port 5173)
-const SERVER_URL = window.location.port === '5173'
-  ? 'http://localhost:3001'
-  : window.location.origin;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL?.trim()
+  || (window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin);
 
 export default function App() {
   const [socket, setSocket] = useState(null);
@@ -50,10 +49,16 @@ export default function App() {
   const [pendingJokerCard, setPendingJokerCard] = useState(null);
   const [isMuted, setIsMuted] = useState(sounds.isMuted());
   const [statusNotification, setStatusNotification] = useState('');
-  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(
+    () => localStorage.getItem('gadha_video_enabled') === 'true'
+  );
 
   const lastActionTimestampRef = useRef(null);
   const notificationTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('gadha_video_enabled', String(videoEnabled));
+  }, [videoEnabled]);
 
   // WebRTC video/audio chat (available during lobby or gameplay)
   const isInRoom = !!gameState;
@@ -89,6 +94,19 @@ export default function App() {
     notificationTimeoutRef.current = setTimeout(() => setStatusNotification(''), 4000);
   }
 
+  function saveSession(rCode, pId, token) {
+    setRoomCode(rCode);
+    setMyPlayerId(pId);
+    setSessionToken(token);
+    localStorage.setItem('gadha_room_code', rCode);
+    localStorage.setItem('gadha_player_id', pId);
+    localStorage.setItem('gadha_session_token', token);
+
+    // Update URL query string without reloading
+    const newUrl = `${window.location.pathname}?room=${rCode}`;
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+  }
+
   // Initialize Socket.IO connection
   useEffect(() => {
     const s = io(SERVER_URL, {
@@ -114,7 +132,7 @@ export default function App() {
       const savedToken = localStorage.getItem('gadha_session_token');
 
       if (savedRoom && savedPid && savedToken) {
-        s.timeout(10000).emit('reconnect_session', {
+        s.timeout(20000).emit('reconnect_session', {
           roomCode: savedRoom,
           playerId: savedPid,
           sessionToken: savedToken
@@ -131,8 +149,7 @@ export default function App() {
               setChatMessages(res.gameState.chatHistory);
             }
           } else {
-            // Room likely expired
-            clearLocalSession();
+            showNotification(`${res?.error || 'Could not resume the saved game.'} Your saved session has been kept.`);
           }
         });
       }
@@ -147,6 +164,18 @@ export default function App() {
     });
 
     s.on('game_state_update', (state) => {
+      if (
+        state.yourPlayerId &&
+        state.sessionToken &&
+        (
+          localStorage.getItem('gadha_room_code') !== state.roomCode ||
+          localStorage.getItem('gadha_player_id') !== state.yourPlayerId ||
+          localStorage.getItem('gadha_session_token') !== state.sessionToken
+        )
+      ) {
+        saveSession(state.roomCode, state.yourPlayerId, state.sessionToken);
+      }
+
       setGameState(state);
 
       if (Array.isArray(state.chatHistory) && state.chatHistory.length > 0) {
@@ -202,19 +231,6 @@ export default function App() {
     };
   }, []);
 
-  function saveSession(rCode, pId, token) {
-    setRoomCode(rCode);
-    setMyPlayerId(pId);
-    setSessionToken(token);
-    localStorage.setItem('gadha_room_code', rCode);
-    localStorage.setItem('gadha_player_id', pId);
-    localStorage.setItem('gadha_session_token', token);
-
-    // Update URL query string without reloading
-    const newUrl = `${window.location.pathname}?room=${rCode}`;
-    window.history.replaceState({ path: newUrl }, '', newUrl);
-  }
-
   function emitRequest(eventName, payload) {
     return new Promise((resolve) => {
       if (!socket || !socket.connected) {
@@ -222,9 +238,9 @@ export default function App() {
         return;
       }
 
-      socket.timeout(10000).emit(eventName, payload, (timeoutError, response) => {
+      socket.timeout(20000).emit(eventName, payload, (timeoutError, response) => {
         if (timeoutError) {
-          resolve({ error: 'The server did not respond. Please try again.' });
+          resolve({ error: 'The server response timed out. Your request may have completed; reconnect and check the room before retrying.' });
           return;
         }
         resolve(response || { error: 'The server returned an empty response.' });

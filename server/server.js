@@ -107,6 +107,8 @@ function getSanitizedGameState(room, requestingPlayerId) {
 
   return {
     roomCode: room.roomCode,
+    yourPlayerId: requestingPlayerId,
+    sessionToken: room.players.find(player => player.id === requestingPlayerId)?.sessionToken || null,
     status: room.status,
     table: room.table,
     players: playersSummary,
@@ -623,6 +625,7 @@ io.on('connection', (socket) => {
     player.connected = true;
     scheduleRoomCleanup(room);
     if (previousSocketId && previousSocketId !== socket.id) {
+      io.to(normalizedCode).emit('webrtc_peer_left', { socketId: previousSocketId });
       io.sockets.sockets.get(previousSocketId)?.disconnect(true);
     }
     socket.join(normalizedCode);
@@ -877,6 +880,7 @@ io.on('connection', (socket) => {
       return;
     }
 
+    socket.to(normalizedCode).emit('webrtc_peer_left', { socketId: socket.id });
     socket.leave(normalizedCode);
     boundRoomCode = null;
     boundPlayerId = null;
@@ -1026,6 +1030,7 @@ io.on('connection', (socket) => {
       if (room) {
         const player = room.players.find(p => p.id === boundPlayerId);
         if (player && player.socketId === socket.id) {
+          socket.to(boundRoomCode).emit('webrtc_peer_left', { socketId: socket.id });
           player.connected = false;
           player.socketId = null;
           promoteHost(room);
